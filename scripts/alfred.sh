@@ -25,7 +25,6 @@ configure_wsl() {
     require_wsl_user
     local tmp
     tmp="$(mktemp)"
-    trap 'rm -f "$tmp"' RETURN
     cat >"$tmp" <<EOF
 [automount]
 enabled = false
@@ -53,6 +52,7 @@ EOF
         sudo cp -a /etc/wsl.conf "/etc/wsl.conf.alfred-backup.$(date +%Y%m%d%H%M%S)"
     fi
     sudo install -o root -g root -m 0644 "$tmp" /etc/wsl.conf
+    rm -f "$tmp"
     log "Wrote /etc/wsl.conf. Exit WSL and run 'wsl --shutdown' from Windows before continuing."
 }
 
@@ -101,7 +101,6 @@ install_rocm() {
 
     local tmpdir
     tmpdir="$(mktemp -d)"
-    trap 'rm -rf "$tmpdir"' RETURN
     wget -q https://github.com/ROCm/librocdxg/releases/download/v1.2.1/rocdxg-roct_1.2.1_amd64.deb \
         -O "$tmpdir/rocdxg-roct_1.2.1_amd64.deb"
     wget -q https://github.com/ROCm/librocdxg/releases/download/v1.2.1/rocdxg-amd-smi-lib_1.2.1_amd64.deb \
@@ -112,7 +111,9 @@ install_rocm() {
         # shellcheck disable=SC1091
         source /etc/profile.d/rocdxg-amd-smi-lib.sh
     fi
-    if [[ -x /opt/rocm/bin/hipcc ]]; then export PATH="/opt/rocm/bin:$PATH"; fi
+    for rocm_bin in /opt/rocm/bin /opt/rocm-7.14*/bin; do
+        if [[ -x "$rocm_bin/hipcc" ]]; then export PATH="$rocm_bin:$PATH"; break; fi
+    done
     command -v hipcc >/dev/null || die "ROCm installed, but hipcc is not on PATH. Inspect the package installation and ROCm environment."
     hipcc --version
     if command -v rocminfo >/dev/null; then
@@ -120,6 +121,7 @@ install_rocm() {
     else
         log "rocminfo was not found; GPU runtime discovery still needs checking."
     fi
+    rm -rf "$tmpdir"
     log "ROCm 7.14 and ROCDXG package installation completed."
 }
 
