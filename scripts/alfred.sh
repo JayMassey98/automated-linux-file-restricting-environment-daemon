@@ -40,6 +40,7 @@ appendWindowsPath = false
 default = $USER
 EOF
     if [[ -f /etc/wsl.conf ]] && cmp -s "$tmp" /etc/wsl.conf; then
+        rm -f "$tmp"
         log "/etc/wsl.conf already matches the ALFRED isolation configuration."
         return
     fi
@@ -47,7 +48,7 @@ EOF
     cat "$tmp"
     printf '\nThis disables Windows-drive automount and Windows interop for this distro.\n'
     read -r -p "Apply it? [y/N] " answer
-    [[ "$answer" =~ ^[Yy]$ ]] || { log "No changes made."; return; }
+    [[ "$answer" =~ ^[Yy]$ ]] || { rm -f "$tmp"; log "No changes made."; return; }
     if [[ -f /etc/wsl.conf ]]; then
         sudo cp -a /etc/wsl.conf "/etc/wsl.conf.alfred-backup.$(date +%Y%m%d%H%M%S)"
     fi
