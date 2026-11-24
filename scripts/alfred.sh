@@ -215,7 +215,7 @@ launch_server() {
     ctx="${CTX_SIZE:-32768}"
     log "Starting $backend llama-server at $host:$port."
     log "Default context is 32768 tokens. Adjust CTX_SIZE for your memory and workload."
-    exec "$server" -m "$model" --host "$host" --port "$port" -c "$ctx" -ngl "$gpu_layers" \
+    "$server" -m "$model" --host "$host" --port "$port" -c "$ctx" -ngl "$gpu_layers" \
         --flash-attn on --parallel 1 --cache-type-k q4_0 --cache-type-v q4_0
 }
 
