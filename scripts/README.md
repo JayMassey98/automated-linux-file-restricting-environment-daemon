@@ -1,46 +1,119 @@
-# ROCm 7.14 + llama.cpp setup scripts
+# ALFRED setup: Windows, WSL2, ROCm 7.14 and llama.cpp
 
-Run these scripts in order:
+ALFRED provides two entry points:
 
-1. **Windows PowerShell as Administrator:** `00-windows-host.ps1`
-2. Launch Ubuntu 24.04 under WSL and create its Linux user.
-3. **Inside WSL:** `01-configure-wsl-isolation.sh`
-4. Exit WSL; from Windows run `wsl --shutdown`, then reopen Ubuntu.
-5. **Inside WSL:** `02-verify-wsl-environment.sh`
-6. **Inside WSL:** `03-install-rocm-7.14.sh`
-7. **Inside WSL:** `04-prepare-llama-cpp.sh`
-8. **Inside WSL:** `05-build-backends.sh`
-9. Optionally, **Inside WSL:** `06-launch-qwen-server.sh`
+- scripts/alfred.ps1 — Windows host and WSL orchestration.
+- scripts/alfred.sh — Linux-side WSL, ROCm, model and llama.cpp setup.
 
-## Before starting
+The PowerShell entry point streams the Linux script into WSL. This is intentional: after isolation is enabled, the distro no longer automounts Windows drives and Windows interop is disabled, so WSL cannot rely on reading the script from a Windows-mounted path.
 
-- Install a current AMD Adrenalin driver on Windows that supports ROCm-on-WSL for your GPU. Driver installation is intentionally manual; use a release appropriate for your hardware and reboot if requested.
-- Use Ubuntu 24.04 on WSL 2.
-- Review the scripts before running them. Package installation and system configuration require elevated privileges where indicated.
-- These scripts do **not** unregister, reset, or delete an existing WSL distribution, and do not edit Windows TDR registry settings.
-- The WSL isolation configuration disables Windows-drive automount and Windows interop, enables systemd, and sets the current Linux user as the default user. This intentionally removes Windows path/interop convenience from that distro.
+## Prerequisites
 
-## Paths and models
+- Windows 11 with WSL2 support.
+- Ubuntu 24.04 WSL distribution.
+- An AMD GPU supported by AMD's ROCm 7.14 WSL configuration and a compatible AMD Adrenalin WSL driver installed on Windows.
+- Internet access and enough disk space for ROCm, build outputs, and model files. The Qwen3.6 27B Q4_K_M model is approximately 20 GB.
+- Review all scripts before running them. Linux package installation and system configuration use sudo.
+
+Install the AMD Windows driver manually from the release appropriate for your GPU. Reboot if its installer requests it. ALFRED does not attempt to install Windows graphics drivers.
+
+## Recommended one-command setup
+
+Open PowerShell as Administrator in the repository root and run:
+
+    .\scripts\alfred.ps1 -Stage all
+
+The first run enables the WSL Windows features, updates WSL, sets WSL 2 as the default, and installs Ubuntu 24.04 if it is not already present. If Ubuntu was newly installed, launch it once with wsl -d Ubuntu-24.04, create your Linux username and password, then rerun the ALFRED command.
+
+For an existing Ubuntu 24.04 distro, the all stage:
+
+1. Applies the WSL isolation configuration and backs up an existing /etc/wsl.conf.
+2. Shuts WSL down and restarts the distro so the configuration takes effect.
+3. Verifies WSL, systemd, disabled Windows interop/automount, and /dev/dxg.
+4. Installs the ROCm 7.14 Core SDK and the ROCDXG plus AMD SMI WSL packages.
+5. Installs build dependencies, pins llama.cpp, and downloads validation and production GGUF models.
+6. Builds CPU, Vulkan and HIP backends, then runs a short CPU smoke test.
+
+The initial setup can take a long time. The production model download is large.
+
+## Individual stages
+
+Run these from Windows PowerShell in the repository root:
+
+- .\scripts\alfred.ps1 -Stage host — Windows features, WSL update and Ubuntu provisioning only.
+- .\scripts\alfred.ps1 -Stage configure — write /etc/wsl.conf; then run wsl --shutdown manually.
+- .\scripts\alfred.ps1 -Stage verify — validate the WSL environment.
+- .\scripts\alfred.ps1 -Stage install — install ROCm 7.14 and ROCDXG/AMD SMI.
+- .\scripts\alfred.ps1 -Stage prepare — install tools, pin llama.cpp and download models.
+- .\scripts\alfred.ps1 -Stage build — build CPU, Vulkan and HIP.
+- .\scripts\alfred.ps1 -Stage serve — launch the configured inference server.
+
+Linux stages can also be run directly from a clone stored inside the WSL filesystem, for example ~/src/alfred:
+
+    bash scripts/alfred.sh configure
+    # From Windows: wsl --shutdown
+    bash scripts/alfred.sh all
+
+Do not store the working clone only on a Windows drive if you intend to run the Linux script directly after applying the isolation configuration.
+
+## WSL isolation behaviour
+
+The ALFRED configuration sets:
+
+- automount.enabled = false
+- boot.systemd = true
+- interop.enabled = false
+- interop.appendWindowsPath = false
+- the current Linux user as the default user
+
+This intentionally disables /mnt/c automount and Windows executable interop for this Ubuntu distro. It does not unregister, reset, or delete any WSL distribution. It does not change Windows TDR registry settings. An existing /etc/wsl.conf is backed up before replacement.
+
+## ROCm 7.14 audit notes
+
+The ROCm 7.2 Radeon-on-WSL guide used the amdgpu-install package and the wsl,rocm use case. ROCm 7.14 moved to unified installation documentation. For Ubuntu 24.04, the 7.14 package-manager instructions use the multi-architecture ubuntu2404 repository and the amdrocm-core-sdk7.14 meta-package. The WSL section separately installs rocdxg-roct and rocdxg-amd-smi-lib 1.2.1 packages. ALFRED follows the 7.14 instructions rather than carrying forward the older 7.2 installer flow.
+
+References:
+
+- AMD ROCm 7.14.0 install guide: https://rocm.docs.amd.com/en/docs-7.14.0/install/rocm.html
+- AMD ROCm 7.2 Radeon WSL install guide: https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.2/docs/install/installrad/wsl/install-radeon.html
+- ROCDXG project: https://github.com/ROCm/librocdxg
+- llama.cpp pinned commit: https://github.com/ggml-org/llama.cpp/commit/bec4772f6a2527d371557b5d2032641e5ff7619c
+
+## Paths, models and configuration
 
 Defaults:
-- llama.cpp: `$HOME/src/llama.cpp`
-- Models: `$HOME/models`
-- Build directories: `build-cpu`, `build-vulkan`, `build-hip`
 
-Export `LLAMA_DIR` and/or `MODEL_DIR` to override the defaults. llama.cpp is pinned to commit `bec4772f6a2527d371557b5d2032641e5ff7619c`. Hugging Face downloads may require accepting model access terms.
+- llama.cpp: $HOME/src/llama.cpp
+- Models: $HOME/models
+- Builds: build-cpu, build-vulkan, build-hip
+- Validation model: Qwen2.5 1.5B Instruct, Q4_K_M
+- Production model: ggml-org/Qwen3.6-27B-GGUF, Q4_K_M
 
-## Server
+Override Linux defaults with environment variables before invoking a Linux stage:
 
-The optional launcher defaults to the Vulkan build, the Qwen3.6 27B GGUF model directory, context size 200000, and `0.0.0.0:8080`. Large models and context sizes may exceed available RAM/VRAM; lower `CTX_SIZE` if needed.
+- LLAMA_DIR
+- MODEL_DIR
+- JOBS (defaults to 4 build jobs)
+- BACKEND (hip, vulkan, or cpu; defaults to hip)
+- MODEL_PATH
+- HOST (defaults to 127.0.0.1)
+- PORT (defaults to 8080)
+- CTX_SIZE (defaults to 32768)
+- GPU_LAYERS
 
-From Windows, test the API with:
+The server binds to localhost by default. Set HOST=0.0.0.0 only if you intentionally want to expose it to other machines on your network and have configured suitable firewall/access controls.
 
-```powershell
-curl.exe http://localhost:8080/v1/models
-```
+To test the API from Windows:
 
-Stop the server with Ctrl+C.
+    curl.exe http://localhost:8080/v1/models
 
-## Scope notes
+Stop the server with Ctrl+C in the PowerShell/WSL terminal.
 
-The older 7.2 guide includes historical failed installation attempts, crash traces, and workarounds (including a TdrDelay registry tweak). Those are not automated: they are troubleshooting history, not safe default setup steps. The 7.14 guide does not fully specify a final server-launch procedure, so the optional launcher follows the earlier launch pattern. Review its model and context settings for your hardware.
+## Troubleshooting and scope
+
+- If /dev/dxg is absent, verify WSL2 and the Windows AMD driver before attempting ROCm installation.
+- If rocminfo cannot enumerate the GPU, check the supported GPU/driver matrix and the ROCDXG installation.
+- If HIP configuration fails, confirm hipcc is on PATH and that the installed ROCm SDK supports your GPU architecture.
+- If Vulkan is unavailable at runtime, verify WSL Vulkan support with vulkaninfo --summary; successful compilation alone does not prove GPU execution.
+- The 27B model and 32768-token context can exceed available RAM/VRAM. Reduce CTX_SIZE, GPU_LAYERS, or choose a smaller GGUF if necessary.
+- Historical crash traces, failed experiments and Windows TDR registry workarounds from the older guide are troubleshooting history, not automated setup actions.
