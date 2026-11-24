@@ -46,8 +46,12 @@ function Invoke-HostSetup {
 function Invoke-LinuxStage([string]$LinuxStage) {
     if (-not (Test-Path -LiteralPath $LinuxScript -PathType Leaf)) { throw "Linux script not found: $LinuxScript" }
     $scriptText = [System.IO.File]::ReadAllText($LinuxScript)
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($scriptText))
     Write-Host "Running ALFRED Linux stage '$LinuxStage' in $Distro..."
-    $scriptText | & wsl.exe --distribution $Distro --exec bash -s -- $LinuxStage
+    # Deliver the script as a temporary file so stdin remains attached to the
+    # console for interactive confirmation and sudo password prompts.
+    $command = 'tmp=$(mktemp); printf "%s" "' + $encoded + '" | base64 -d > "$tmp"; bash "$tmp" ' + $LinuxStage + '; status=$?; rm -f "$tmp"; exit "$status"'
+    & wsl.exe --distribution $Distro --exec bash -lc $command
     if ($LASTEXITCODE -ne 0) { throw "ALFRED Linux stage '$LinuxStage' failed with exit code $LASTEXITCODE." }
 }
 switch ($Stage) {
