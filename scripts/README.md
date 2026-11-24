@@ -5,7 +5,7 @@ ALFRED provides two entry points:
 - scripts/alfred.ps1 — Windows host and WSL orchestration.
 - scripts/alfred.sh — Linux-side WSL, ROCm, model and llama.cpp setup.
 
-The PowerShell entry point streams the Linux script into WSL. This is intentional: after isolation is enabled, the distro no longer automounts Windows drives and Windows interop is disabled, so WSL cannot rely on reading the script from a Windows-mounted path.
+The PowerShell entry point transfers the Linux script into a temporary file inside WSL and removes it after the stage exits. This keeps stdin available for interactive confirmation and sudo password prompts. It also avoids relying on a Windows-mounted path after isolation disables drive automount and Windows interop.
 
 ## Prerequisites
 
@@ -89,7 +89,7 @@ Defaults:
 - Validation model: Qwen2.5 1.5B Instruct, Q4_K_M
 - Production model: ggml-org/Qwen3.6-27B-GGUF, Q4_K_M
 
-Override Linux defaults with environment variables before invoking a Linux stage:
+To override these defaults, edit the assignments near the top of alfred.sh, or export the variables when running alfred.sh directly from a clone inside WSL. Windows PowerShell environment variables are not automatically forwarded into the isolated Linux environment:
 
 - LLAMA_DIR
 - MODEL_DIR
