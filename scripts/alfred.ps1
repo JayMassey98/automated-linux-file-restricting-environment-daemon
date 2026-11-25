@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("host", "configure", "verify", "install", "prepare", "build", "serve", "all")]
+    [ValidateSet("host", "configure", "detect", "verify", "install", "install-cuda", "prepare", "build", "serve", "all")]
     [string]$Stage = "all",
     [string]$Distro = "Ubuntu-24.04"
 )
@@ -60,8 +60,10 @@ switch ($Stage) {
         Invoke-LinuxStage "configure"
         Write-Host "From Windows, run 'wsl --shutdown' before using the distro again."
     }
+    "detect" { Invoke-LinuxStage "detect" }
     "verify" { Invoke-LinuxStage "verify" }
     "install" { Invoke-LinuxStage "install" }
+    "install-cuda" { Invoke-LinuxStage "install-cuda" }
     "prepare" { Invoke-LinuxStage "prepare" }
     "build" { Invoke-LinuxStage "build" }
     "serve" { Invoke-LinuxStage "serve" }
