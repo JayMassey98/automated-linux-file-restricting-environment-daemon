@@ -113,21 +113,41 @@ Then run:
 
 ALFRED installs that local repository package, refreshes APT metadata from the local repository only, and installs the driver-compatible `cuda-toolkit-X-Y` package with APT downloads disabled. It will not install a Linux NVIDIA driver. The local repository must contain the toolkit version selected for the Windows host driver, and any OS-level dependencies not included in the local repository must already be installed/cached. If they are missing, installation fails rather than reaching out to the internet.
 
+**Ubuntu build dependencies — `-UseSuppliedInstallUbuntuBuildDependencies`**
+
+This supplies the complete Ubuntu package set needed by the prepare stage. On a **clean Ubuntu 24.04 amd64** staging machine with internet access, run:
+
+    sudo apt-get update
+    sudo apt-get clean
+    sudo apt-get install --download-only -y build-essential cmake ninja-build git pkg-config libcurl4-openssl-dev libvulkan-dev mesa-vulkan-drivers vulkan-tools glslc pipx python3-venv
+    mkdir -p ~/alfred-supplied/ubuntu-build-deps
+    sudo cp /var/cache/apt/archives/*.deb ~/alfred-supplied/ubuntu-build-deps/
+    sudo chown -R "$USER":"$USER" ~/alfred-supplied/ubuntu-build-deps
+
+Copy the entire `ubuntu-build-deps` directory into the target WSL user's `~/alfred-supplied/` directory. Include the complete set of downloaded .deb files; do not copy only the top-level packages. The command above includes `pipx` and `python3-venv` for the normal online-model/Hugging Face path. If you will always use `-UseSuppliedModels`, those two packages are not needed, but including them is harmless.
+
+Run:
+
+    .\scripts\alfred.ps1 -Stage prepare -UseSuppliedInstallUbuntuBuildDependencies
+
+ALFRED passes the supplied .deb files directly to APT with `--no-download`. APT resolves dependencies using the supplied files and packages already installed in Ubuntu. If a required dependency is missing, the stage stops instead of attempting an internet download.
+
 **Combining the options**
 
-The switches apply to their respective stages. For a fully staged NVIDIA setup, run:
+For a staged NVIDIA work PC with all four offline alternatives:
 
     .\scripts\alfred.ps1 -Stage install-cuda -UseSuppliedInstallCUDAToolkit
-    .\scripts\alfred.ps1 -Stage prepare -UseSuppliedInstallLlama -UseSuppliedModels
+    .\scripts\alfred.ps1 -Stage prepare -UseSuppliedInstallLlama -UseSuppliedModels -UseSuppliedInstallUbuntuBuildDependencies
     .\scripts\alfred.ps1 -Stage build
 
 For direct execution inside WSL, the equivalent environment variables are:
 
     USE_SUPPLIED_MODELS=1 bash scripts/alfred.sh prepare
     USE_SUPPLIED_INSTALL_LLAMA=1 bash scripts/alfred.sh prepare
+    USE_SUPPLIED_INSTALL_UBUNTU_BUILD_DEPENDENCIES=1 bash scripts/alfred.sh prepare
     USE_SUPPLIED_INSTALL_CUDA_TOOLKIT=1 bash scripts/alfred.sh install-cuda
 
-The supplied media only replaces the corresponding model/source/CUDA-repository download. The prepare stage still installs Ubuntu build dependencies using APT, and a completely air-gapped machine also needs those OS packages supplied or already installed. The NVIDIA local repository installer may not contain every Ubuntu dependency required by the toolkit. This is therefore offline media support for these three components, not a claim that every ALFRED stage is fully air-gapped.
+The Ubuntu dependency bundle should be prepared for Ubuntu 24.04 amd64. APT will not download missing packages in supplied mode, but packages already installed on the target system can satisfy dependencies. The supplied bundle replaces the prepare-stage Ubuntu build-dependency installation only; it does not supply ROCm packages, CUDA repository packages, WSL itself, or other system dependencies used by separate stages.
 
 ## WSL isolation behaviour
 
