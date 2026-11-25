@@ -41,7 +41,7 @@ function Invoke-HostSetup {
     wsl.exe --distribution $Distro --exec id -u
     if ($LASTEXITCODE -ne 0) { throw "Launch $Distro manually, create its Linux user, and rerun this script." }
     Write-Host "Windows/WSL host preparation is complete."
-    Write-Host "Install a compatible AMD Adrenalin WSL driver manually and reboot if requested."
+    Write-Host "Install the appropriate GPU vendor Windows driver manually if required; ALFRED does not install Windows GPU drivers."
 }
 function Invoke-LinuxStage([string]$LinuxStage) {
     if (-not (Test-Path -LiteralPath $LinuxScript -PathType Leaf)) { throw "Linux script not found: $LinuxScript" }
