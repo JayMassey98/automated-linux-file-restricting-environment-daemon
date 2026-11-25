@@ -46,6 +46,7 @@ Run these from Windows PowerShell in the repository root:
 - .\scripts\alfred.ps1 -Stage configure — write /etc/wsl.conf; then run wsl --shutdown manually.
 - .\scripts\alfred.ps1 -Stage detect — report WSL GPU visibility and installed HIP/CUDA toolchains.
 - .\scripts\alfred.ps1 -Stage verify — validate the WSL environment.
+- `.\\scripts\\alfred.ps1 -Stage audit-network` — read-only Windows/WSL networking and Hyper-V firewall inventory; it changes nothing.
 - .\scripts\alfred.ps1 -Stage install — install ROCm 7.14 and ROCDXG/AMD SMI.
 - .\scripts\alfred.ps1 -Stage install-cuda — install a driver-compatible CUDA toolkit only; it never installs or changes an NVIDIA driver.
 - .\scripts\alfred.ps1 -Stage prepare — install tools, pin llama.cpp and download models.
@@ -169,7 +170,13 @@ The Linux-side network check is available inside WSL:
 
 It checks that Linux has no non-loopback IP addresses and no IPv4 or IPv6 default route. It requires iproute2.
 
-**Important:** the Windows PowerShell `-Stage verify-network` wrapper is temporarily unavailable while its previous implementation is being repaired and revalidated. Do not use that command. The Linux check alone does not verify Windows policy, the effective WSL networking mode, Hyper-V firewall rules, or prove an air gap.
+The Windows-side read-only audit is available from PowerShell (firewall query permissions may vary):
+
+    .\\scripts\\alfred.ps1 -Stage audit-network
+
+It reports WSL version/status and distributions, the `.wslconfig` file and SHA256, WSL policy registry indicators, registered Hyper-V VM creators, WSL Hyper-V VM settings from ActiveStore and PersistentStore, active Hyper-V profiles, and WSL-specific Hyper-V firewall rules. It does not change files, registry values, firewall policy, or WSL state. Query failures are reported as warnings rather than treated as proof that a control is absent.
+
+The audit is inventory only: `.wslconfig` contents do not prove the effective runtime mode, registry inspection cannot prove that all GPO/MDM policy is absent, and rule/profile output still requires review for explicit allow rules and policy merges. It does not test packet reachability or prove an air gap.
 
 Offline/online mode switching is not implemented. Do not assume that this check enables isolation or changes firewall settings. A successful Linux-side result is only a runtime check, not a formal air gap or protection against a privileged/compromised Windows host. Do not infer isolation from a failed ping or a refused connection to a closed port.
 
