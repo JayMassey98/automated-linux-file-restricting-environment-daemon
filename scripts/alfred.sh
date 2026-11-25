@@ -190,19 +190,24 @@ install_cuda() {
     fi
     log "Installing $package only. No Linux NVIDIA driver package will be installed."
     if [[ "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "1" || "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "true" || "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "yes" ]]; then
-        local -a local_repo_debs=("$SUPPLIED_DIR"/cuda-repo-ubuntu2404-*-local_*.deb)
-        [[ -f "${local_repo_debs[0]}" ]] || die "Supplied CUDA local-repository installer not found. Put NVIDIA's cuda-repo-ubuntu2404-*-local_*.deb file in $SUPPLIED_DIR."
+        local -a local_repo_debs=("$SUPPLIED_DIR"/cuda-repo-wsl-ubuntu-*-local_*.deb)
+        [[ -f "${local_repo_debs[0]}" ]] || die "Supplied CUDA local-repository installer not found. Put NVIDIA's WSL-specific cuda-repo-wsl-ubuntu-*-local_*.deb file in $SUPPLIED_DIR."
         if (("${#local_repo_debs[@]}" != 1)); then die "Expected exactly one supplied CUDA local-repository .deb in $SUPPLIED_DIR; found ${#local_repo_debs[@]}."; fi
         log "Installing supplied CUDA repository package: ${local_repo_debs[0]}"
-        sudo dpkg -i "${local_repo_debs[0]}" || die "Could not install the supplied CUDA local-repository .deb. Check that it is for Ubuntu 24.04 x86_64."
+        sudo dpkg -i "${local_repo_debs[0]}" || die "Could not install the supplied CUDA local-repository .deb. Check that it is NVIDIA's WSL-specific repository for x86_64."
         local repo_list
-        repo_list="$(find /var -maxdepth 3 -path '/var/cuda-repo-ubuntu2404-*-local/*.list' -type f -print -quit)"
-        [[ -n "$repo_list" ]] || die "The supplied CUDA repository package did not install an APT source list under /var."
+        repo_list="$(find /var -maxdepth 3 -path '/var/cuda-repo-wsl-ubuntu-*-local/*.list' -type f -print -quit)"
+        [[ -n "$repo_list" ]] || die "The supplied WSL CUDA repository package did not install an APT source list under /var."
+        local repo_dir
+        repo_dir="$(dirname "$repo_list")"
+        local -a repo_keyrings=("$repo_dir"/cuda-*-keyring.gpg)
+        [[ -f "${repo_keyrings[0]}" ]] || die "The supplied WSL CUDA repository does not contain its documented GPG keyring: $repo_dir/cuda-*-keyring.gpg."
+        if (("${#repo_keyrings[@]}" != 1)); then die "Expected exactly one CUDA repository keyring in $repo_dir; found ${#repo_keyrings[@]}."; fi
+        sudo install -m 0644 "${repo_keyrings[0]}" /usr/share/keyrings/
         log "Refreshing package metadata from the supplied local CUDA repository only."
         sudo apt-get update -o Dir::Etc::sourcelist="$repo_list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
-        local candidate policy repo_dir
+        local candidate policy
         policy="$(apt-cache policy "$package")"
-        repo_dir="$(dirname "$repo_list")"
         grep -Fq "$repo_dir" <<<"$policy" || die "APT does not see $package in the supplied local CUDA repository at $repo_dir."
         candidate="$(awk '/Candidate:/ {print $2; exit}' <<<"$policy")"
         [[ -n "$candidate" && "$candidate" != "(none)" ]] || die "The supplied CUDA repository does not contain $package. Supply a local-repository installer containing a toolkit compatible with driver $driver."
@@ -213,7 +218,7 @@ install_cuda() {
         sudo apt-get update
         sudo apt-get install -y ca-certificates wget
         tmpdir="$(mktemp -d)"
-        wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb -O "$tmpdir/cuda-keyring.deb"
+        wget -q https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-keyring_1.1-1_all.deb -O "$tmpdir/cuda-keyring.deb"
         sudo dpkg -i "$tmpdir/cuda-keyring.deb"
         rm -rf "$tmpdir"
         sudo apt-get update
