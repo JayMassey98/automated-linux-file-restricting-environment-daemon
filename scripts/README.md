@@ -1,9 +1,9 @@
-# ALFRED setup: Windows, WSL2, ROCm 7.14 and llama.cpp
+# ALFRED setup: Windows, WSL2, ROCm/CUDA and llama.cpp
 
 ALFRED provides two entry points:
 
 - scripts/alfred.ps1 — Windows host and WSL orchestration.
-- scripts/alfred.sh — Linux-side WSL, ROCm, model and llama.cpp setup.
+- scripts/alfred.sh — Linux-side WSL, ROCm/CUDA, model and llama.cpp setup.
 
 The PowerShell entry point transfers the Linux script into a temporary file inside WSL and removes it after the stage exits. This keeps stdin available for interactive confirmation and sudo password prompts. It also avoids relying on a Windows-mounted path after isolation disables drive automount and Windows interop.
 
@@ -11,7 +11,7 @@ The PowerShell entry point transfers the Linux script into a temporary file insi
 
 - Windows 11 with WSL2 support.
 - Ubuntu 24.04 WSL distribution.
-- An AMD GPU supported by AMD's ROCm 7.14 WSL configuration and a compatible AMD Adrenalin WSL driver installed on Windows.
+- For AMD, a GPU supported by the selected ROCm WSL configuration and a compatible AMD Adrenalin WSL driver. For NVIDIA, an RTX/GeForce GPU whose existing Windows driver exposes CUDA to WSL2. ALFRED never installs an NVIDIA driver.
 - Internet access and enough disk space for ROCm, build outputs, and model files. The Qwen3.6 27B Q4_K_M model is approximately 20 GB.
 - Review all scripts before running them. Linux package installation and system configuration use sudo.
 
@@ -32,7 +32,7 @@ For an existing Ubuntu 24.04 distro, the all stage:
 3. Verifies WSL, systemd, disabled Windows interop/automount, and /dev/dxg.
 4. Installs the ROCm 7.14 Core SDK and the ROCDXG plus AMD SMI WSL packages.
 5. Installs build dependencies, pins llama.cpp, and downloads validation and production GGUF models.
-6. Builds CPU, Vulkan and HIP backends, then runs a short CPU smoke test.
+6. Builds CPU and Vulkan, plus HIP and/or CUDA when their compilers are installed, then runs a CPU smoke test.
 
 The initial setup can take a long time. The production model download is large.
 
@@ -42,10 +42,12 @@ Run these from Windows PowerShell in the repository root:
 
 - .\scripts\alfred.ps1 -Stage host — Windows features, WSL update and Ubuntu provisioning only.
 - .\scripts\alfred.ps1 -Stage configure — write /etc/wsl.conf; then run wsl --shutdown manually.
+- .\scripts\alfred.ps1 -Stage detect — report WSL GPU visibility and installed HIP/CUDA toolchains.
 - .\scripts\alfred.ps1 -Stage verify — validate the WSL environment.
 - .\scripts\alfred.ps1 -Stage install — install ROCm 7.14 and ROCDXG/AMD SMI.
+- .\scripts\alfred.ps1 -Stage install-cuda — install a driver-compatible CUDA toolkit only; it never installs or changes an NVIDIA driver.
 - .\scripts\alfred.ps1 -Stage prepare — install tools, pin llama.cpp and download models.
-- .\scripts\alfred.ps1 -Stage build — build CPU, Vulkan and HIP.
+- .\scripts\alfred.ps1 -Stage build — build CPU and Vulkan, plus HIP and/or CUDA when their compilers are installed.
 - .\scripts\alfred.ps1 -Stage serve — launch the configured inference server.
 
 Linux stages can also be run directly from a clone stored inside the WSL filesystem, for example ~/src/alfred:
@@ -68,6 +70,33 @@ The ALFRED configuration sets:
 
 This intentionally disables /mnt/c automount and Windows executable interop for this Ubuntu distro. It does not unregister, reset, or delete any WSL distribution. It does not change Windows TDR registry settings. An existing /etc/wsl.conf is backed up before replacement.
 
+## NVIDIA CUDA on WSL2
+
+CUDA is an optional backend for machines whose existing Windows NVIDIA driver exposes the GPU to WSL2. Start by detecting what WSL can see:
+
+    .\scripts\alfred.ps1 -Stage detect
+
+For a CUDA-capable NVIDIA work PC, install the toolkit and build:
+
+    .\scripts\alfred.ps1 -Stage install-cuda
+    .\scripts\alfred.ps1 -Stage prepare
+    .\scripts\alfred.ps1 -Stage build
+
+The CUDA installer reads the driver version reported by the WSL-visible `nvidia-smi`, then selects a compatible toolkit package. It installs an explicit `cuda-toolkit-X-Y` package from NVIDIA's Ubuntu 24.04 repository. It deliberately does **not** install `cuda`, `cuda-drivers`, `nvidia-open`, or any Linux NVIDIA display driver. The Windows driver remains the only GPU driver. If the detected driver is too old for ALFRED's supported toolkit choices, installation stops without attempting a driver update.
+
+To launch the CUDA server:
+
+    $env:BACKEND = "cuda"
+    .\scripts\alfred.ps1 -Stage serve
+
+Alternatively, `BACKEND=auto` (the default) selects CUDA when a CUDA build and NVIDIA GPU are visible, then HIP, Vulkan, or CPU. CUDA and HIP use independent `build-cuda` and `build-hip` directories.
+
+NVIDIA references:
+
+- CUDA on WSL User Guide: https://docs.nvidia.com/cuda/wsl-user-guide/
+- CUDA Toolkit release notes and driver compatibility: https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/
+- CUDA Toolkit installation guide: https://docs.nvidia.com/cuda/cuda-installation-guide-linux/
+
 ## ROCm 7.14 audit notes
 
 The ROCm 7.2 Radeon-on-WSL guide used the amdgpu-install package and the wsl,rocm use case. ROCm 7.14 moved to unified installation documentation. For Ubuntu 24.04, the 7.14 package-manager instructions use the multi-architecture ubuntu2404 repository and the amdrocm-core-sdk7.14 meta-package. The WSL section separately installs rocdxg-roct and rocdxg-amd-smi-lib 1.2.1 packages. ALFRED follows the 7.14 instructions rather than carrying forward the older 7.2 installer flow.
@@ -85,7 +114,7 @@ Defaults:
 
 - llama.cpp: $HOME/src/llama.cpp
 - Models: $HOME/models
-- Builds: build-cpu, build-vulkan, build-hip
+- Builds: build-cpu, build-vulkan, build-hip, build-cuda
 - Validation model: Qwen2.5 1.5B Instruct, Q4_K_M
 - Production model: ggml-org/Qwen3.6-27B-GGUF, Q4_K_M
 
@@ -94,7 +123,7 @@ To override these defaults, edit the assignments near the top of alfred.sh, or e
 - LLAMA_DIR
 - MODEL_DIR
 - JOBS (defaults to 4 build jobs)
-- BACKEND (hip, vulkan, or cpu; defaults to hip)
+- BACKEND (auto, cuda, hip, vulkan, or cpu; defaults to auto)
 - MODEL_PATH
 - HOST (defaults to 127.0.0.1)
 - PORT (defaults to 8080)
@@ -111,7 +140,9 @@ Stop the server with Ctrl+C in the PowerShell/WSL terminal.
 
 ## Troubleshooting and scope
 
-- If /dev/dxg is absent, verify WSL2 and the Windows AMD driver before attempting ROCm installation.
+- If /dev/dxg is absent, verify WSL2 and the relevant Windows GPU driver before attempting GPU setup.
+- If nvidia-smi is unavailable in WSL, ALFRED cannot use the Windows NVIDIA driver; contact IT rather than installing a Linux driver.
+- If CUDA installation stops because the driver is too old, ALFRED intentionally leaves the managed Windows driver untouched.
 - If rocminfo cannot enumerate the GPU, check the supported GPU/driver matrix and the ROCDXG installation.
 - If HIP configuration fails, confirm hipcc is on PATH and that the installed ROCm SDK supports your GPU architecture.
 - If Vulkan is unavailable at runtime, verify WSL Vulkan support with vulkaninfo --summary; successful compilation alone does not prove GPU execution.
