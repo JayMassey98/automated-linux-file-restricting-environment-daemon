@@ -171,8 +171,10 @@ function Invoke-NetworkPreflight {
     $nvidiaSmiCandidates=@()
     $programFilesNvidia=Join-Path $env:ProgramFiles "NVIDIA Corporation\NVSMI\nvidia-smi.exe"
     if (Test-Path -LiteralPath $programFilesNvidia -PathType Leaf) { $nvidiaSmiCandidates+=$programFilesNvidia }
-    $programFilesX86Nvidia=Join-Path ${env:ProgramFiles(x86)} "NVIDIA Corporation\NVSMI\nvidia-smi.exe"
-    if (${env:ProgramFiles(x86)} -and (Test-Path -LiteralPath $programFilesX86Nvidia -PathType Leaf) -and $nvidiaSmiCandidates -notcontains $programFilesX86Nvidia) { $nvidiaSmiCandidates+=$programFilesX86Nvidia }
+    if (${env:ProgramFiles(x86)}) {
+        $programFilesX86Nvidia=Join-Path ${env:ProgramFiles(x86)} "NVIDIA Corporation\NVSMI\nvidia-smi.exe"
+        if ((Test-Path -LiteralPath $programFilesX86Nvidia -PathType Leaf) -and $nvidiaSmiCandidates -notcontains $programFilesX86Nvidia) { $nvidiaSmiCandidates+=$programFilesX86Nvidia }
+    }
     $systemNvidia=Join-Path $env:WINDIR "System32\nvidia-smi.exe"
     if ((Test-Path -LiteralPath $systemNvidia -PathType Leaf) -and $nvidiaSmiCandidates -notcontains $systemNvidia) { $nvidiaSmiCandidates+=$systemNvidia }
     if ($env:ProgramW6432) {
