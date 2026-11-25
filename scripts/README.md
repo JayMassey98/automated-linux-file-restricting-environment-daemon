@@ -17,7 +17,7 @@ The PowerShell entry point transfers the Linux script into a temporary file insi
 
 Install the AMD Windows driver manually from the release appropriate for your GPU. Reboot if its installer requests it. ALFRED does not attempt to install Windows graphics drivers.
 
-## Recommended one-command setup
+## Recommended one-command AMD setup
 
 Open PowerShell as Administrator in the repository root and run:
 
