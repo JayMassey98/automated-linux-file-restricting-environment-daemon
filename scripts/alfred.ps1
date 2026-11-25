@@ -163,12 +163,25 @@ function Invoke-NetworkPreflight {
     $wslInstalled=$false
     $wslSignals=@()
     try {
-        $services=@(Get-Service -Name "WslService","LxssManager" -ErrorAction SilentlyContinue)
-        if ($services.Count -gt 0) {
+        # LxssManager may be registered as an inbox component even when the
+        # WSL optional feature is not enabled. Do not treat its mere presence
+        # as proof that the WSL CLI/runtime is installed.
+        $service=Get-Service -Name "WslService" -ErrorAction SilentlyContinue
+        if ($null -ne $service) {
             $wslInstalled=$true
-            $wslSignals+=("service(s): " + (($services | ForEach-Object {$_.Name}) -join ", "))
+            $wslSignals+="WslService service registered"
         }
     } catch {}
+    try {
+        $feature=Get-WindowsOptionalFeature -Online -FeatureName "Microsoft-Windows-Subsystem-Linux" -ErrorAction Stop
+        if ([string]$feature.State -eq "Enabled") {
+            $wslInstalled=$true
+            $wslSignals+="Windows Subsystem for Linux optional feature enabled"
+        }
+    } catch {
+        # Query may require permissions on managed hosts; unknown is not
+        # treated as evidence that WSL is installed.
+    }
     try {
         if (Get-AppxPackage -Name "MicrosoftCorporationII.WindowsSubsystemForLinux" -ErrorAction SilentlyContinue) {
             $wslInstalled=$true
