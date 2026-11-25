@@ -95,6 +95,39 @@ The shared orchestrator must not silently switch providers after a provider fail
 - Keep recovery records local, access-controlled, integrity-checked, and free of credentials or secrets. Define retention and manual recovery instructions before implementation.
 - If rollback is incomplete, clearly identify which settings ALFRED changed, which settings remain uncertain, and the supported manual recovery path. Never report success.
 
+### Windows 11 provider: read-only preflight specification
+
+The first implementation milestone is a read-only preflight. It must not edit .wslconfig, registry values, firewall rules/settings, WSL distributions, network adapters, or service state. It must not run wsl --shutdown. It should be usable without elevation for inventory where possible; inability to query a required item is reported as unknown or insufficient permission, not as absence.
+
+The preflight report should contain these independently assessed categories:
+
+| Category | Evidence to collect | Passing interpretation |
+|---|---|---|
+| Host OS | Product name, edition, display version, build and revision from Windows APIs | Windows 11 build is within an explicitly tested provider matrix; do not infer compatibility from version text alone |
+| WSL installation | Raw output and exit status for wsl --version and wsl --status; executable path/version where available | WSL release is known and meets the provider's tested minimum; parsing failure is unknown |
+| WSL distributions | wsl --list --verbose, selected target distro, WSL version (must be 2) and running/stopped state | Target distro exists and is WSL 2; disclose that a later global shutdown affects every WSL 2 distro |
+| Hyper-V firewall commands | Availability of required Get-, Set-, New- and Remove- cmdlets, plus their parameter metadata | Required read and mutation commands are present; command presence alone does not prove access or effective policy |
+| WSL VM creator | Enumerate creators and match the documented WSL creator ID, not just a hard-coded GUID query | The creator is positively identified as WSL; missing or ambiguous registration is unsupported/unknown |
+| Effective firewall policy | Read WSL VM settings from ActiveStore and local PersistentStore; read active Hyper-V profiles and WSL-specific rules | Required properties are present and readable; ActiveStore values are reviewed for enabled state, inbound/outbound defaults, loopback, policy merge, and exceptions |
+| WSL configuration | Record .wslconfig existence, raw bytes/hash, encoding/line endings where detectable, and relevant networking keys | Inventory only; existing user settings and unknown keys are preserved and surfaced for planning |
+| WSL policy | Inspect documented policy indicators and available policy/CSP evidence without changing it | No contradictory or unresolvable policy is present; absence of a registry key is not proof that no MDM/GPO policy applies |
+| Permissions | Check current token elevation and perform non-mutating read probes | Read access is sufficient for preflight; mutation permissions are checked separately before any future apply operation |
+
+The provider's compatibility matrix must state its tested Windows build range and minimum WSL release. Microsoft documents networkingMode=none as a Windows 11-only setting requiring Windows 11 22H2 or later. Microsoft documents Hyper-V firewall integration for Windows 11 22H2+ with WSL 2.0.9+. These are minimum documented platform boundaries, not proof that every later build, managed image, or WSL package is compatible. The project must choose and test an explicit WSL minimum before implementation.
+
+The Hyper-V firewall query must treat ActiveStore as the applied/merged settings view and PersistentStore as the local persistent configuration view. The preflight must not conclude that local settings are effective by inspecting PersistentStore alone. It must record, at minimum, Enabled, DefaultInboundAction, DefaultOutboundAction, LoopbackEnabled, and AllowHostPolicyMerge when those properties are exposed. It must enumerate applicable WSL rules and identify explicit allow rules. It must not attempt to infer the absence of all enterprise policy from registry inspection alone.
+
+Command discovery should use Get-Command and parameter metadata, then run read-only queries with terminating errors captured per category. Do not invoke Set-, New-, or Remove- cmdlets during preflight, even with values intended to be no-ops. A command being present is not equivalent to successful invocation. The report must distinguish:
+- **PASS:** the required evidence was obtained and meets the documented preflight condition.
+- **UNSUPPORTED:** the host or installed WSL version is outside the provider's supported matrix, or a required control is absent.
+- **BLOCKED:** access is denied or available policy evidence explicitly prevents the operation.
+- **UNKNOWN:** a query failed, output could not be parsed, or policy/effective state cannot be determined.
+- **FAIL:** observed state contradicts a mandatory provider prerequisite.
+
+The overall preflight result is eligible only when every mandatory category passes. It must never label the machine isolated: preflight only establishes whether a later, separately confirmed plan may be considered. A successful preflight must still be followed by a change plan, explicit consent, capture, apply, and independent verification.
+
+Recommended report fields are: report schema version, timestamp, host build, raw WSL version/status output, target distribution and WSL generation, provider identifier/version, each category's status, concise evidence, warnings, and a final eligibility result. Do not store credentials, environment secrets, proxy passwords, or full unrelated policy dumps in a persistent report.
+
 ### Implementation gates
 
 No provider should be implemented until its supported Windows/WSL matrix, exact control semantics, policy interactions, rollback behavior, and test plan are documented. The Windows 11 provider must first pass non-production tests for normal transition, interruption at every mutation step, policy denial, missing permissions, explicit allow rules, configuration drift, repeated transitions, and exact restoration. The common verifier must be testable independently of the provider using known-good, known-bad, and inconclusive evidence fixtures.
@@ -185,6 +218,10 @@ These checks are necessary but not sufficient to prove an absolute air gap. In p
 - Audit every ALFRED stage and runtime process for hidden download/update fallbacks. Offline mode must never attempt an internet fallback.
 
 ## Microsoft references
+
+- [WSL networking](https://learn.microsoft.com/en-us/windows/wsl/networking) — documents the Windows 11 22H2+ WSL Hyper-V firewall integration and WSL 2.0.9+ baseline.
+- [Get-NetFirewallHyperVVMSetting](https://learn.microsoft.com/en-us/powershell/module/netsecurity/get-netfirewallhypervvmsetting) — documents querying per-VM Hyper-V firewall settings and policy stores.
+- [Intune WSL policies](https://learn.microsoft.com/en-us/windows/wsl/intune) — documents managed WSL policy settings, including default networking mode.
 
 - [WSL advanced settings](https://learn.microsoft.com/en-us/windows/wsl/wsl-config) — documents the global scope of \`.wslconfig\` and \`networkingMode=none\`.
 - [WSL networking](https://learn.microsoft.com/en-us/windows/wsl/networking) — documents WSL networking and host connectivity.
