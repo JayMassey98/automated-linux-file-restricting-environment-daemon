@@ -60,31 +60,74 @@ Linux stages can also be run directly from a clone stored inside the WSL filesys
 
 Do not store the working clone only on a Windows drive if you intend to run the Linux script directly after applying the isolation configuration.
 
-### Using pre-downloaded models (offline model mode)
+### Using supplied installation files (offline alternatives)
 
-If the work PC cannot download model files, download the GGUF files on another machine and transfer them into the WSL filesystem before running ALFRED's prepare stage. The default model root is `$HOME/models` inside Ubuntu (not a Windows path).
+All supplied files are staged inside Ubuntu at:
 
-The required production file must be placed at:
+    ~/alfred-supplied/
+
+Copy them into that directory before running the corresponding stage. The switches below select local media instead of fetching the corresponding model/source/installer from the internet. They do not silently fall back to downloads: if the expected file is missing or unsuitable, ALFRED stops with an error.
+
+**Models — `-UseSuppliedModels`**
+
+The required production GGUF must be:
 
     ~/models/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
 
-The small validation model is optional. If you have it, place it at:
+The optional validation GGUF may be placed at:
 
     ~/models/Qwen2.5-1.5B-Instruct-GGUF/qwen2.5-1.5b-instruct-q4_k_m.gguf
 
-Then run:
+Run:
 
     .\scripts\alfred.ps1 -Stage prepare -UseSuppliedModels
 
-ALFRED checks that the production GGUF exists, skips Hugging Face CLI installation and skips both model downloads. If the optional validation GGUF is absent, the build stage skips its inference smoke tests. You can then build and serve as usual.
+This skips Hugging Face CLI installation and both model downloads. If the optional validation model is absent, build-time inference smoke tests are skipped.
 
-If you store the models somewhere other than `$HOME/models`, set `MODEL_DIR` and `PRODUCTION_MODEL_DIR` in `alfred.sh` to match the locations before running, or move the files into the default layout. The production filename is expected exactly as shown.
+**llama.cpp source — `-UseSuppliedInstallLlama`**
 
-For direct execution inside WSL, the equivalent is:
+Supply a Git bundle named exactly:
+
+    ~/alfred-supplied/llama.cpp.bundle
+
+Create it on a machine with internet access from a llama.cpp checkout that contains ALFRED's pinned commit:
+
+    git fetch origin bec4772f6a2527d371557b5d2032641e5ff7619c
+    git bundle create llama.cpp.bundle bec4772f6a2527d371557b5d2032641e5ff7619c
+
+Copy `llama.cpp.bundle` into `~/alfred-supplied/`, then run:
+
+    .\scripts\alfred.ps1 -Stage prepare -UseSuppliedInstallLlama
+
+ALFRED clones from the local bundle and verifies that the exact pinned commit is present before checking it out. This avoids relying on a possibly newer source snapshot and keeps the build reproducible.
+
+**CUDA Toolkit — `-UseSuppliedInstallCUDAToolkit`**
+
+Download NVIDIA's **Ubuntu 24.04 x86_64 local-repository installer** on a machine with internet access. It is the large `cuda-repo-ubuntu2404-*-local_*.deb` package (not the small network-repository keyring package). Copy exactly one such file into:
+
+    ~/alfred-supplied/
+
+Then run:
+
+    .\scripts\alfred.ps1 -Stage install-cuda -UseSuppliedInstallCUDAToolkit
+
+ALFRED installs that local repository package, refreshes APT metadata from the local repository only, and installs the driver-compatible `cuda-toolkit-X-Y` package with APT downloads disabled. It will not install a Linux NVIDIA driver. The local repository must contain the toolkit version selected for the Windows host driver, and any OS-level dependencies not included in the local repository must already be installed/cached. If they are missing, installation fails rather than reaching out to the internet.
+
+**Combining the options**
+
+The switches apply to their respective stages. For a fully staged NVIDIA setup, run:
+
+    .\scripts\alfred.ps1 -Stage install-cuda -UseSuppliedInstallCUDAToolkit
+    .\scripts\alfred.ps1 -Stage prepare -UseSuppliedInstallLlama -UseSuppliedModels
+    .\scripts\alfred.ps1 -Stage build
+
+For direct execution inside WSL, the equivalent environment variables are:
 
     USE_SUPPLIED_MODELS=1 bash scripts/alfred.sh prepare
+    USE_SUPPLIED_INSTALL_LLAMA=1 bash scripts/alfred.sh prepare
+    USE_SUPPLIED_INSTALL_CUDA_TOOLKIT=1 bash scripts/alfred.sh install-cuda
 
-**Scope of offline mode:** this flag skips model downloads only. The prepare stage still installs Ubuntu build dependencies and fetches the pinned llama.cpp source if it is not already present; those operations require network access. CUDA toolkit installation also requires access to NVIDIA's package repository. If the work PC has no internet access at all, those dependencies and the llama.cpp source must be staged separately too; this flag does not currently provide a fully air-gapped installation.
+The supplied media only replaces the corresponding model/source/CUDA-repository download. The prepare stage still installs Ubuntu build dependencies using APT, and a completely air-gapped machine also needs those OS packages supplied or already installed. The NVIDIA local repository installer may not contain every Ubuntu dependency required by the toolkit. This is therefore offline media support for these three components, not a claim that every ALFRED stage is fully air-gapped.
 
 ## WSL isolation behaviour
 
