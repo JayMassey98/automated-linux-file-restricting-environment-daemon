@@ -229,7 +229,10 @@ prepare_llama() {
 build_backends() {
     require_wsl_user
     [[ -d "$LLAMA_DIR/.git" ]] || die "llama.cpp not found at $LLAMA_DIR; run the prepare stage first."
-    command -v hipcc >/dev/null || die "hipcc not found; run the ROCm install stage first."
+    if [[ -d /usr/local/cuda/bin ]]; then export PATH="/usr/local/cuda/bin:$PATH"; fi
+    for cuda_bin in /usr/local/cuda-*/bin; do
+        if [[ -x "$cuda_bin/nvcc" ]]; then export PATH="$cuda_bin:$PATH"; break; fi
+    done
     log "Building CPU backend."
     cmake -S "$LLAMA_DIR" -B "$LLAMA_DIR/build-cpu" -G Ninja -DCMAKE_BUILD_TYPE=Release
     cmake --build "$LLAMA_DIR/build-cpu" --parallel "$JOBS"
@@ -237,17 +240,38 @@ build_backends() {
     cmake -S "$LLAMA_DIR" -B "$LLAMA_DIR/build-vulkan" -G Ninja \
         -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON
     cmake --build "$LLAMA_DIR/build-vulkan" --parallel "$JOBS"
-    log "Building HIP backend."
-    cmake -S "$LLAMA_DIR" -B "$LLAMA_DIR/build-hip" -G Ninja \
-        -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=ON
-    cmake --build "$LLAMA_DIR/build-hip" --parallel "$JOBS"
+    if command -v hipcc >/dev/null 2>&1; then
+        log "Building HIP backend."
+        cmake -S "$LLAMA_DIR" -B "$LLAMA_DIR/build-hip" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=ON
+        cmake --build "$LLAMA_DIR/build-hip" --parallel "$JOBS"
+    else
+        log "HIP compiler not found; skipping HIP backend."
+    fi
+
+    if command -v nvcc >/dev/null 2>&1; then
+        log "Building CUDA backend."
+        cmake -S "$LLAMA_DIR" -B "$LLAMA_DIR/build-cuda" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON
+        cmake --build "$LLAMA_DIR/build-cuda" --parallel "$JOBS"
+    else
+        log "CUDA compiler not found; skipping CUDA backend."
+    fi
 
     local backend executable path
-    for backend in cpu vulkan hip; do
+    for backend in cpu vulkan; do
         for executable in llama-cli llama-server; do
             path="$LLAMA_DIR/build-$backend/bin/$executable"
             [[ -x "$path" ]] || die "Expected executable was not produced: $path"
         done
+    done
+    for backend in hip cuda; do
+        if [[ -d "$LLAMA_DIR/build-$backend" ]]; then
+            for executable in llama-cli llama-server; do
+                path="$LLAMA_DIR/build-$backend/bin/$executable"
+                [[ -x "$path" ]] || die "Expected executable was not produced: $path"
+            done
+        fi
     done
     if [[ -f "$VALIDATION_MODEL" ]]; then
         log "Running a short CPU smoke test with the validation model."
@@ -256,7 +280,7 @@ build_backends() {
     else
         log "Validation model not found; skipping CPU smoke test."
     fi
-    log "CPU, Vulkan, and HIP builds completed."
+    log "Available CPU, Vulkan, HIP and CUDA builds completed."
 }
 
 launch_server() {
