@@ -161,6 +161,25 @@ The ALFRED configuration sets:
 
 This intentionally disables /mnt/c automount and Windows executable interop for this Ubuntu distro. It does not unregister, reset, or delete any WSL distribution. It does not change Windows TDR registry settings. An existing /etc/wsl.conf is backed up before replacement.
 
+### Read-only offline network verification
+
+ALFRED now includes a read-only verification stage:
+
+    .\scripts\alfred.ps1 -Stage verify-network
+
+Run it from an elevated PowerShell window after an administrator has configured WSL offline networking. It checks that:
+
+- The user's .wslconfig explicitly sets [wsl2] networkingMode=none.
+- The active WSL Hyper-V firewall is enabled, with inbound and outbound defaults set to Block and host/guest loopback disabled.
+- No enabled Hyper-V allow rules are present for the WSL VM creator.
+- Linux reports no non-loopback IP addresses and no IPv4 or IPv6 default route.
+
+The Linux-side check is also available directly inside WSL:
+
+    bash scripts/alfred.sh verify-network
+
+**This stage only verifies; it does not enable offline mode or change firewall settings.** It requires iproute2 inside Ubuntu and elevated PowerShell for the Windows firewall checks. A successful result is a configuration/runtime check, not a formal air gap or protection against a privileged/compromised Windows host. Do not infer isolation from a failed ping or a refused connection to a closed port.
+
 ## NVIDIA CUDA on WSL2
 
 CUDA is an optional backend for machines whose existing Windows NVIDIA driver exposes the GPU to WSL2. Start by detecting what WSL can see:
