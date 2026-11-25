@@ -124,11 +124,11 @@ install_cuda() {
     log "Detected Windows NVIDIA driver $driver through WSL."
     if [[ "$(printf '%s\\n' "$driver" "576.57" | sort -V | head -n1)" == "576.57" ]]; then
         package="cuda-toolkit-12-9"
-    elif [[ "$(printf '%s\\n' "$driver" "570.26" | sort -V | head -n1)" == "570.26" ]]; then
+    elif [[ "$(printf '%s\\n' "$driver" "572.61" | sort -V | head -n1)" == "572.61" ]]; then
         package="cuda-toolkit-12-8"
-    elif [[ "$(printf '%s\\n' "$driver" "560.76" | sort -V | head -n1)" == "560.76" ]]; then
+    elif [[ "$(printf '%s\\n' "$driver" "561.17" | sort -V | head -n1)" == "561.17" ]]; then
         package="cuda-toolkit-12-6"
-    elif [[ "$(printf '%s\\n' "$driver" "551.61" | sort -V | head -n1)" == "551.61" ]]; then
+    elif [[ "$(printf '%s\\n' "$driver" "551.78" | sort -V | head -n1)" == "551.78" ]]; then
         package="cuda-toolkit-12-4"
     else
         die "Driver $driver is below ALFRED's supported automatic toolkit floor. No driver update will be attempted; contact IT or use CPU/Vulkan."
