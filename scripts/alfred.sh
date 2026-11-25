@@ -138,7 +138,7 @@ install_cuda() {
     if [[ "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "1" || "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "true" || "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "yes" ]]; then
         local -a local_repo_debs=("$SUPPLIED_DIR"/cuda-repo-ubuntu2404-*-local_*.deb)
         [[ -f "${local_repo_debs[0]}" ]] || die "Supplied CUDA local-repository installer not found. Put NVIDIA's cuda-repo-ubuntu2404-*-local_*.deb file in $SUPPLIED_DIR."
-        (("${#local_repo_debs[@]}" == 1)) || die "Expected exactly one supplied CUDA local-repository .deb in $SUPPLIED_DIR; found ${#local_repo_debs[@]}."
+        (("${#local_repo_debs[@]}" != 1)) && die "Expected exactly one supplied CUDA local-repository .deb in $SUPPLIED_DIR; found ${#local_repo_debs[@]}."
         log "Installing supplied CUDA repository package: ${local_repo_debs[0]}"
         sudo dpkg -i "${local_repo_debs[0]}" || die "Could not install the supplied CUDA local-repository .deb. Check that it is for Ubuntu 24.04 x86_64."
         local repo_list
