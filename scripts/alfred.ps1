@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("host", "configure", "detect", "verify", "install", "install-cuda", "prepare", "build", "serve", "all")]
+    [ValidateSet("host", "configure", "detect", "verify", "audit-network", "install", "install-cuda", "prepare", "build", "serve", "all")]
     [string]$Stage = "all",
     [string]$Distro = "Ubuntu-24.04",
     [switch]$UseSuppliedModels,
@@ -19,6 +19,108 @@ function Assert-Administrator {
         throw "Run this stage from an elevated PowerShell window (Run as Administrator)."
     }
 }
+
+function Invoke-NetworkAudit {
+    # Read-only inventory. This function deliberately makes no firewall, WSL,
+    # registry, or configuration changes.
+    $creatorId = "{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}"
+    $wslConfig = Join-Path $HOME ".wslconfig"
+    Write-Host "=== ALFRED read-only Windows/WSL network audit ==="
+    Write-Host "No settings will be changed."
+
+    Write-Host "`n[WSL version and distributions]"
+    & wsl.exe --version
+    if ($LASTEXITCODE -ne 0) { Write-Warning "wsl --version is unavailable on this WSL installation." }
+    & wsl.exe --status
+    if ($LASTEXITCODE -ne 0) { Write-Warning "wsl --status could not be queried." }
+    & wsl.exe --list --verbose
+    if ($LASTEXITCODE -ne 0) { Write-Warning "Could not enumerate WSL distributions." }
+
+    Write-Host "`n[.wslconfig]"
+    if (Test-Path -LiteralPath $wslConfig -PathType Leaf) {
+        $item = Get-Item -LiteralPath $wslConfig
+        $hash = (Get-FileHash -LiteralPath $wslConfig -Algorithm SHA256).Hash
+        Write-Host "Exists: yes"
+        Write-Host "Path: $wslConfig"
+        Write-Host "Length: $($item.Length) bytes"
+        Write-Host "SHA256: $hash"
+        Write-Host "Contents (read-only):"
+        Get-Content -LiteralPath $wslConfig
+        $raw = [System.IO.File]::ReadAllText($wslConfig)
+        if ($raw -match '(?im)^\s*networkingMode\s*=\s*([^\r\n#;]+)') {
+            Write-Host "Configured networkingMode: $($Matches[1].Trim())"
+        } else {
+            Write-Host "Configured networkingMode: not explicitly set (WSL default/policy applies)"
+        }
+    } else {
+        Write-Host "Exists: no (WSL defaults and policy determine networking mode)"
+    }
+    Write-Host "Note: .wslconfig is global to this Windows user's WSL 2 distributions; file contents do not prove the effective runtime mode."
+
+    Write-Host "`n[WSL policy registry indicators]"
+    $policyPaths = @(
+        "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Subsystem for Linux",
+        "HKCU:\SOFTWARE\Policies\Microsoft\Windows\Windows Subsystem for Linux"
+    )
+    foreach ($path in $policyPaths) {
+        if (Test-Path -LiteralPath $path) {
+            Write-Host "Policy registry key present: $path"
+            try { Get-ItemProperty -LiteralPath $path | Format-List * }
+            catch { Write-Warning "Could not read policy key $path : $($_.Exception.Message)" }
+        } else {
+            Write-Host "No policy registry key at: $path"
+        }
+    }
+    Write-Host "Registry inspection is an indicator only; absence does not prove that GPO/MDM policy is absent."
+
+    Write-Host "`n[Hyper-V firewall cmdlet availability]"
+    $required = @("Get-NetFirewallHyperVVMCreator", "Get-NetFirewallHyperVVMSetting",
+                  "Get-NetFirewallHyperVRule", "Get-NetFirewallHyperVProfile")
+    foreach ($name in $required) {
+        if (Get-Command $name -ErrorAction SilentlyContinue) { Write-Host "[AVAILABLE] $name" }
+        else { Write-Warning "[UNAVAILABLE] $name" }
+    }
+
+    if (Get-Command Get-NetFirewallHyperVVMCreator -ErrorAction SilentlyContinue) {
+        Write-Host "`n[Registered Hyper-V VM creators]"
+        try { Get-NetFirewallHyperVVMCreator | Format-List * }
+        catch { Write-Warning "Could not enumerate VM creators: $($_.Exception.Message)" }
+    }
+
+    if (Get-Command Get-NetFirewallHyperVVMSetting -ErrorAction SilentlyContinue) {
+        foreach ($store in @("ActiveStore", "PersistentStore")) {
+            Write-Host "`n[WSL Hyper-V VM settings: $store]"
+            try {
+                $settings = @(Get-NetFirewallHyperVVMSetting -PolicyStore $store -Name $creatorId -ErrorAction Stop)
+                if ($settings.Count -eq 0) { Write-Host "No settings returned." }
+                else { $settings | Format-List * }
+            } catch { Write-Warning "Could not read $store WSL VM settings: $($_.Exception.Message)" }
+        }
+    }
+
+    if (Get-Command Get-NetFirewallHyperVProfile -ErrorAction SilentlyContinue) {
+        Write-Host "`n[Hyper-V firewall profile settings: ActiveStore]"
+        try { Get-NetFirewallHyperVProfile -PolicyStore ActiveStore -ErrorAction Stop | Format-List * }
+        catch { Write-Warning "Could not read active Hyper-V firewall profiles: $($_.Exception.Message)" }
+    }
+
+    if (Get-Command Get-NetFirewallHyperVRule -ErrorAction SilentlyContinue) {
+        Write-Host "`n[WSL Hyper-V firewall rules]"
+        try {
+            $rules = @(Get-NetFirewallHyperVRule -VMCreatorId $creatorId -ErrorAction Stop)
+            if ($rules.Count -eq 0) { Write-Host "No WSL-specific Hyper-V rules returned." }
+            else { $rules | Format-List * }
+        } catch { Write-Warning "Could not enumerate WSL Hyper-V rules: $($_.Exception.Message)" }
+    }
+
+    Write-Host "`n[Audit interpretation]"
+    Write-Host "- ActiveStore is the effective merged Hyper-V firewall policy; PersistentStore is local persistent policy."
+    Write-Host "- Rule enumeration and profile policy must be reviewed for explicit allow rules and policy merges."
+    Write-Host "- This audit does not prove that networkingMode=none is effective and does not test packet reachability."
+    Write-Host "- No isolation status is granted by this audit. Do not use it as proof of an air gap."
+    Write-Host "=== Audit complete; no changes made. ==="
+}
+
 function Invoke-HostSetup {
     Assert-Administrator
     Write-Host "Enabling Windows Subsystem for Linux..."
@@ -78,6 +180,7 @@ switch ($Stage) {
     }
     "detect" { Invoke-LinuxStage "detect" }
     "verify" { Invoke-LinuxStage "verify" }
+    "audit-network" { Invoke-NetworkAudit }
     "install" { Invoke-LinuxStage "install" }
     "install-cuda" { Invoke-LinuxStage "install-cuda" }
     "prepare" { Invoke-LinuxStage "prepare" }
