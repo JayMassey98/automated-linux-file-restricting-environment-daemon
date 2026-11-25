@@ -24,7 +24,8 @@ nvidia_smi_path() {
 
 assert_toolkit_only_apt_plan() {
     local package="$1" plan line planned
-    plan="$(sudo apt-get install --simulate --no-install-recommends "$package" 2>&1)" || die "APT could not simulate the $package installation. No toolkit installation was attempted. Review the package sources and dependencies."
+    shift
+    plan="$(sudo apt-get install --simulate --no-install-recommends "$@" "$package" 2>&1)" || die "APT could not simulate the $package installation. No toolkit installation was attempted. Review the package sources and dependencies."
     log "Reviewing the proposed APT transaction for $package (simulation only)."
     while IFS= read -r line; do
         [[ "$line" =~ ^Inst[[:space:]]+([^[:space:]]+) ]] || continue
@@ -190,6 +191,10 @@ install_cuda() {
     fi
     log "Installing $package only. No Linux NVIDIA driver package will be installed."
     if [[ "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "1" || "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "true" || "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "yes" ]]; then
+        local pin_file="$SUPPLIED_DIR/cuda-wsl-ubuntu.pin"
+        [[ -f "$pin_file" ]] || die "Supplied NVIDIA WSL CUDA repository pin file not found: $pin_file."
+        local -a cuda_dependency_debs=("$SUPPLIED_DIR"/cuda-deps/*.deb)
+        [[ -f "${cuda_dependency_debs[0]}" ]] || die "Supplied CUDA dependency bundle is empty. Stage the complete cuda-toolkit-12-8 dependency set in $SUPPLIED_DIR/cuda-deps/."
         local -a local_repo_debs=("$SUPPLIED_DIR"/cuda-repo-wsl-ubuntu-*-local_*.deb)
         [[ -f "${local_repo_debs[0]}" ]] || die "Supplied CUDA local-repository installer not found. Put NVIDIA's WSL-specific cuda-repo-wsl-ubuntu-*-local_*.deb file in $SUPPLIED_DIR."
         if (("${#local_repo_debs[@]}" != 1)); then die "Expected exactly one supplied CUDA local-repository .deb in $SUPPLIED_DIR; found ${#local_repo_debs[@]}."; fi
@@ -204,16 +209,18 @@ install_cuda() {
         [[ -f "${repo_keyrings[0]}" ]] || die "The supplied WSL CUDA repository does not contain its documented GPG keyring: $repo_dir/cuda-*-keyring.gpg."
         if (("${#repo_keyrings[@]}" != 1)); then die "Expected exactly one CUDA repository keyring in $repo_dir; found ${#repo_keyrings[@]}."; fi
         sudo install -m 0644 "${repo_keyrings[0]}" /usr/share/keyrings/
+        sudo install -D -m 0644 "$pin_file" /etc/apt/preferences.d/cuda-repository-pin-600
+        local -a local_apt_options=(-o "Dir::Etc::sourcelist=$repo_list" -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0)
         log "Refreshing package metadata from the supplied local CUDA repository only."
-        sudo apt-get update -o Dir::Etc::sourcelist="$repo_list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+        sudo apt-get update "${local_apt_options[@]}"
         local candidate policy
         policy="$(apt-cache policy "$package")"
         grep -Fq "$repo_dir" <<<"$policy" || die "APT does not see $package in the supplied local CUDA repository at $repo_dir."
         candidate="$(awk '/Candidate:/ {print $2; exit}' <<<"$policy")"
         [[ -n "$candidate" && "$candidate" != "(none)" ]] || die "The supplied CUDA repository does not contain $package. Supply a local-repository installer containing a toolkit compatible with driver $driver."
-        assert_toolkit_only_apt_plan "$package"
-        log "Installing $package from local media only; APT downloads are disabled."
-        sudo apt-get install --no-download -y "$package"
+        assert_toolkit_only_apt_plan "$package" "${local_apt_options[@]}" "${cuda_dependency_debs[@]}"
+        log "Installing $package and its staged dependencies from local media only; APT downloads are disabled."
+        sudo apt-get install --no-download -y "${local_apt_options[@]}" "${cuda_dependency_debs[@]}" "$package"
     else
         sudo apt-get update
         sudo apt-get install -y ca-certificates wget
