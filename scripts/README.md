@@ -86,12 +86,11 @@ For a CUDA-capable NVIDIA work PC, use this sequence:
 
 The CUDA installer reads the driver version reported by the WSL-visible `nvidia-smi`, then selects a compatible toolkit package. It installs an explicit `cuda-toolkit-X-Y` package from NVIDIA's Ubuntu 24.04 repository. It deliberately does **not** install `cuda`, `cuda-drivers`, `nvidia-open`, or any Linux NVIDIA display driver. The Windows driver remains the only GPU driver. If the detected driver is too old for ALFRED's supported toolkit choices, installation stops without attempting a driver update.
 
-To launch the CUDA server:
+To launch the CUDA server, the default `BACKEND=auto` selects CUDA when a CUDA build and NVIDIA GPU are visible, then HIP, Vulkan, or CPU. To force CUDA when running the Linux script directly inside WSL:
 
-    $env:BACKEND = "cuda"
-    .\scripts\alfred.ps1 -Stage serve
+    BACKEND=cuda bash scripts/alfred.sh serve
 
-Alternatively, `BACKEND=auto` (the default) selects CUDA when a CUDA build and NVIDIA GPU are visible, then HIP, Vulkan, or CPU. CUDA and HIP use independent `build-cuda` and `build-hip` directories.
+Windows PowerShell environment variables are not forwarded into the isolated WSL environment by the orchestration script. CUDA and HIP use independent `build-cuda` and `build-hip` directories.
 
 NVIDIA references:
 
