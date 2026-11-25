@@ -74,7 +74,7 @@ The small validation model is optional. If you have it, place it at:
 
 Then run:
 
-    .\scripts\alfred.ps1 -Stage prepare -UseLocalModels
+    .\scripts\alfred.ps1 -Stage prepare -UseSuppliedModels
 
 ALFRED checks that the production GGUF exists, skips Hugging Face CLI installation and skips both model downloads. If the optional validation GGUF is absent, the build stage skips its inference smoke tests. You can then build and serve as usual.
 
@@ -82,7 +82,7 @@ If you store the models somewhere other than `$HOME/models`, set `MODEL_DIR` and
 
 For direct execution inside WSL, the equivalent is:
 
-    USE_LOCAL_MODELS=1 bash scripts/alfred.sh prepare
+    USE_SUPPLIED_MODELS=1 bash scripts/alfred.sh prepare
 
 **Scope of offline mode:** this flag skips model downloads only. The prepare stage still installs Ubuntu build dependencies and fetches the pinned llama.cpp source if it is not already present; those operations require network access. CUDA toolkit installation also requires access to NVIDIA's package repository. If the work PC has no internet access at all, those dependencies and the llama.cpp source must be staged separately too; this flag does not currently provide a fully air-gapped installation.
 
