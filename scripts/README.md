@@ -60,6 +60,32 @@ Linux stages can also be run directly from a clone stored inside the WSL filesys
 
 Do not store the working clone only on a Windows drive if you intend to run the Linux script directly after applying the isolation configuration.
 
+### Using pre-downloaded models (offline model mode)
+
+If the work PC cannot download model files, download the GGUF files on another machine and transfer them into the WSL filesystem before running ALFRED's prepare stage. The default model root is `$HOME/models` inside Ubuntu (not a Windows path).
+
+The required production file must be placed at:
+
+    ~/models/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
+
+The small validation model is optional. If you have it, place it at:
+
+    ~/models/Qwen2.5-1.5B-Instruct-GGUF/qwen2.5-1.5b-instruct-q4_k_m.gguf
+
+Then run:
+
+    .\scripts\alfred.ps1 -Stage prepare -UseLocalModels
+
+ALFRED checks that the production GGUF exists, skips Hugging Face CLI installation and skips both model downloads. If the optional validation GGUF is absent, the build stage skips its inference smoke tests. You can then build and serve as usual.
+
+If you store the models somewhere other than `$HOME/models`, set `MODEL_DIR` and `PRODUCTION_MODEL_DIR` in `alfred.sh` to match the locations before running, or move the files into the default layout. The production filename is expected exactly as shown.
+
+For direct execution inside WSL, the equivalent is:
+
+    USE_LOCAL_MODELS=1 bash scripts/alfred.sh prepare
+
+**Scope of offline mode:** this flag skips model downloads only. The prepare stage still installs Ubuntu build dependencies and fetches the pinned llama.cpp source if it is not already present; those operations require network access. CUDA toolkit installation also requires access to NVIDIA's package repository. If the work PC has no internet access at all, those dependencies and the llama.cpp source must be staged separately too; this flag does not currently provide a fully air-gapped installation.
+
 ## WSL isolation behaviour
 
 The ALFRED configuration sets:
