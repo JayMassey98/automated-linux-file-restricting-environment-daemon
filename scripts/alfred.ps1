@@ -159,7 +159,7 @@ function Invoke-NetworkPreflight {
             Where-Object { $_.Name -match "NVIDIA" -or $_.AdapterCompatibility -match "NVIDIA" })
         if ($video.Count -gt 0) {
             $videoEvidence=@($video | ForEach-Object {
-                "Name=$($_.Name); Adapter=$($_.AdapterCompatibility); DriverVersion=$($_.DriverVersion); Status=$($_.Status); PNPDeviceID=$($_.PNPDeviceID)"
+                "Name=$($_.Name); Adapter=$($_.AdapterCompatibility); DriverVersion=$($_.DriverVersion); Status=$($_.Status)"
             })
             Add-PreflightResult "NVIDIA Windows GPU inventory" "PASS" ($videoEvidence -join " | ")
         } else {
@@ -171,6 +171,8 @@ function Invoke-NetworkPreflight {
     $nvidiaSmiCandidates=@()
     $programFilesNvidia=Join-Path $env:ProgramFiles "NVIDIA Corporation\NVSMI\nvidia-smi.exe"
     if (Test-Path -LiteralPath $programFilesNvidia -PathType Leaf) { $nvidiaSmiCandidates+=$programFilesNvidia }
+    $programFilesX86Nvidia=Join-Path ${env:ProgramFiles(x86)} "NVIDIA Corporation\NVSMI\nvidia-smi.exe"
+    if (${env:ProgramFiles(x86)} -and (Test-Path -LiteralPath $programFilesX86Nvidia -PathType Leaf) -and $nvidiaSmiCandidates -notcontains $programFilesX86Nvidia) { $nvidiaSmiCandidates+=$programFilesX86Nvidia }
     $systemNvidia=Join-Path $env:WINDIR "System32\nvidia-smi.exe"
     if ((Test-Path -LiteralPath $systemNvidia -PathType Leaf) -and $nvidiaSmiCandidates -notcontains $systemNvidia) { $nvidiaSmiCandidates+=$systemNvidia }
     if ($env:ProgramW6432) {
@@ -210,7 +212,7 @@ function Invoke-NetworkPreflight {
         }
     }
     if (-not $nvidiaSmiOK -and $nvidiaSmiCandidates.Count -eq 0) {
-        Add-PreflightResult "NVIDIA Windows nvidia-smi" "UNKNOWN" "NVIDIA NVSMI utility not found in the standard Program Files location; no executable was downloaded or installed."
+        Add-PreflightResult "NVIDIA Windows nvidia-smi" "UNKNOWN" "NVIDIA NVSMI utility not found in the standard 64-bit, 32-bit, or System32 locations; no executable was downloaded or installed."
     }
 
     $build=0
@@ -306,6 +308,12 @@ function Invoke-NetworkPreflight {
                 if ($entry.Name -eq "WSL distributions") {Add-PreflightResult "Target distribution" "UNKNOWN" "Could not enumerate distributions."}
             }
         }
+    }
+
+    if (-not $wslInstalled) {
+        Add-PreflightResult "NVIDIA WSL GPU passthrough" "UNKNOWN" "Not tested: WSL is not positively detected. Windows GPU inventory does not establish WSL GPU availability."
+    } else {
+        Add-PreflightResult "NVIDIA WSL GPU passthrough" "UNKNOWN" "Not tested by this Windows-only preflight; confirm /dev/dxg and Linux-side nvidia-smi after WSL is available."
     }
 
     $names=@("Get-NetFirewallHyperVVMCreator","Get-NetFirewallHyperVVMSetting","Get-NetFirewallHyperVRule","Get-NetFirewallHyperVProfile","Set-NetFirewallHyperVVMSetting","New-NetFirewallHyperVVMSetting","Remove-NetFirewallHyperVRule")
