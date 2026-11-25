@@ -257,3 +257,31 @@ Stop the server with Ctrl+C in the PowerShell/WSL terminal.
 - If Vulkan is unavailable at runtime, verify WSL Vulkan support with vulkaninfo --summary; successful compilation alone does not prove GPU execution.
 - The 27B model and 32768-token context can exceed available RAM/VRAM. Reduce CTX_SIZE, GPU_LAYERS, or choose a smaller GGUF if necessary.
 - Historical crash traces, failed experiments and Windows TDR registry workarounds from the older guide are troubleshooting history, not automated setup actions.
+
+
+### Managed NVIDIA workstations: use the existing Windows driver
+
+ALFRED must use the NVIDIA driver already installed and managed on the Windows host. **Do not install, update, replace, or sideload a Windows NVIDIA driver, and do not install a Linux NVIDIA display driver inside WSL.** The Windows driver exposes the WSL GPU interface; the Linux distribution needs a compatible CUDA Toolkit only when compiling CUDA applications.
+
+After you have installed WSL and Ubuntu yourself, and completed Ubuntu first-run setup, use the read-only detection stage first:
+
+    .\scripts\alfred.ps1 -Stage detect
+
+Inside Ubuntu, the corresponding checks are:
+
+    nvidia-smi
+    ls -l /dev/dxg
+
+Keep the complete nvidia-smi output, including GPU model and driver version. If nvidia-smi cannot enumerate the GPU or /dev/dxg is absent, stop and contact IT. Do not try to repair this by installing a Linux driver or changing the managed Windows driver.
+
+Only after the existing host driver is visible should you consider:
+
+    .\scripts\alfred.ps1 -Stage install-cuda
+
+The CUDA installer selects from ALFRED's currently supported toolkit versions using the driver version reported inside WSL. It installs a CUDA Toolkit package, not a Windows or Linux GPU driver. Before either online or supplied-media installation, ALFRED simulates the APT transaction and refuses to proceed if the proposed package transaction contains recognised NVIDIA driver packages. This is an additional safeguard, not a substitute for reviewing package changes; if APT proposes any driver, kernel-module, or host integration package, stop and ask IT.
+
+The toolkit compatibility table is deliberately conservative and must be revisited against the exact driver version and current NVIDIA release notes when the workstation is ready. Do not infer the work PC's GPU model or compatible toolkit from “mobile RTX 4000-series” alone. The actual WSL-reported driver version is required.
+
+Official references:
+- [NVIDIA CUDA on WSL User Guide](https://docs.nvidia.com/cuda/wsl-user-guide/) — Windows driver provides WSL GPU support; do not install a Linux display driver.
+- [CUDA Toolkit release notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/) — minimum driver compatibility is toolkit-release-specific.
