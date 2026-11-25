@@ -286,8 +286,24 @@ build_backends() {
 launch_server() {
     require_wsl_user
     local backend server model gpu_layers host port ctx
-    backend="${BACKEND:-hip}"
-    case "$backend" in cpu|vulkan|hip) ;; *) die "BACKEND must be cpu, vulkan, or hip." ;; esac
+    backend="${BACKEND:-auto}"
+    if [[ "$backend" == auto ]]; then
+        if [[ -x "$LLAMA_DIR/build-cuda/bin/llama-server" ]] && smi="$(nvidia_smi_path)" && "$smi" -L >/dev/null 2>&1; then
+            backend=cuda
+        elif [[ -x "$LLAMA_DIR/build-hip/bin/llama-server" ]] && command -v rocminfo >/dev/null 2>&1; then
+            backend=hip
+        elif [[ -x "$LLAMA_DIR/build-vulkan/bin/llama-server" ]]; then
+            backend=vulkan
+        else
+            backend=cpu
+        fi
+        log "Automatically selected backend: $backend"
+    fi
+    case "$backend" in cpu|vulkan|hip|cuda) ;; *) die "BACKEND must be auto, cuda, hip, vulkan, or cpu." ;; esac
+    if [[ "$backend" == cuda ]]; then
+        smi="$(nvidia_smi_path)" || die "nvidia-smi is unavailable; CUDA requires the Windows host driver exposed to WSL."
+        "$smi" -L >/dev/null 2>&1 || die "No usable NVIDIA GPU is visible to WSL."
+    fi
     server="$LLAMA_DIR/build-$backend/bin/llama-server"
     [[ -x "$server" ]] || die "Server binary not found: $server. Run the build stage first."
     model="${MODEL_PATH:-$PRODUCTION_MODEL_DIR}"
@@ -310,8 +326,10 @@ launch_server() {
 
 case "$STAGE" in
     configure) configure_wsl ;;
+    detect) detect_hardware ;;
     verify) verify_environment ;;
     install) install_rocm ;;
+    install-cuda) install_cuda ;;
     prepare) prepare_llama ;;
     build) build_backends ;;
     serve) launch_server ;;
@@ -321,5 +339,5 @@ case "$STAGE" in
         prepare_llama
         build_backends
         ;;
-    *) die "Usage: alfred.sh {configure|verify|install|prepare|build|serve|all}" ;;
+    *) die "Usage: alfred.sh {configure|detect|verify|install|install-cuda|prepare|build|serve|all}" ;;
 esac
