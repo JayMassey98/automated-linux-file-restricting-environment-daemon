@@ -189,7 +189,15 @@ function Invoke-NetworkPreflight {
                 Add-PreflightResult "NVIDIA Windows nvidia-smi" "UNKNOWN" ("Signed NVIDIA utility found, but read-only GPU query failed (exit " + $queryExit + "): " + ($query -join " "))
                 continue
             }
-            Add-PreflightResult "NVIDIA Windows nvidia-smi" "PASS" ("Path=" + $nvidiaSmi + "; name, driver version, current driver model: " + (($query | ForEach-Object { "$_".Trim() }) -join " | "))
+            $queryText=(($query | ForEach-Object { "$_".Trim() }) -join " | ")
+            Add-PreflightResult "NVIDIA Windows nvidia-smi" "PASS" ("Path=" + $nvidiaSmi + "; name, driver version, current driver model: " + $queryText)
+            if ($queryText -match ",\s*WDDM\s*$") {
+                Add-PreflightResult "NVIDIA WSL driver-model prerequisite" "PASS" "The Windows NVIDIA utility reports WDDM mode, which is the required model for NVIDIA CUDA GPU acceleration in WSL."
+            } elseif ($queryText -match ",\s*TCC\s*$") {
+                Add-PreflightResult "NVIDIA WSL driver-model prerequisite" "UNSUPPORTED" "The Windows NVIDIA utility reports TCC mode; NVIDIA documents WSL GPU acceleration for WDDM mode, not TCC."
+            } else {
+                Add-PreflightResult "NVIDIA WSL driver-model prerequisite" "UNKNOWN" ("GPU and driver were queried, but the current driver model could not be parsed from: " + $queryText)
+            }
             $nvidiaSmiOK=$true
             break
         } catch {
