@@ -171,6 +171,8 @@ function Invoke-NetworkPreflight {
     $nvidiaSmiCandidates=@()
     $programFilesNvidia=Join-Path $env:ProgramFiles "NVIDIA Corporation\NVSMI\nvidia-smi.exe"
     if (Test-Path -LiteralPath $programFilesNvidia -PathType Leaf) { $nvidiaSmiCandidates+=$programFilesNvidia }
+    $systemNvidia=Join-Path $env:WINDIR "System32\nvidia-smi.exe"
+    if ((Test-Path -LiteralPath $systemNvidia -PathType Leaf) -and $nvidiaSmiCandidates -notcontains $systemNvidia) { $nvidiaSmiCandidates+=$systemNvidia }
     if ($env:ProgramW6432) {
         $wideNvidia=Join-Path $env:ProgramW6432 "NVIDIA Corporation\NVSMI\nvidia-smi.exe"
         if ((Test-Path -LiteralPath $wideNvidia -PathType Leaf) -and $nvidiaSmiCandidates -notcontains $wideNvidia) { $nvidiaSmiCandidates+=$wideNvidia }
@@ -191,12 +193,15 @@ function Invoke-NetworkPreflight {
             }
             $queryText=(($query | ForEach-Object { "$_".Trim() }) -join " | ")
             Add-PreflightResult "NVIDIA Windows nvidia-smi" "PASS" ("Path=" + $nvidiaSmi + "; name, driver version, current driver model: " + $queryText)
-            if ($queryText -match ",\s*WDDM\s*$") {
-                Add-PreflightResult "NVIDIA WSL driver-model prerequisite" "PASS" "The Windows NVIDIA utility reports WDDM mode, which is the required model for NVIDIA CUDA GPU acceleration in WSL."
-            } elseif ($queryText -match ",\s*TCC\s*$") {
-                Add-PreflightResult "NVIDIA WSL driver-model prerequisite" "UNSUPPORTED" "The Windows NVIDIA utility reports TCC mode; NVIDIA documents WSL GPU acceleration for WDDM mode, not TCC."
+            $models=@($query | ForEach-Object {
+                if ("$_" -match ",\s*(WDDM|TCC)\s*$") { $Matches[1] }
+            })
+            if ($models.Count -gt 0 -and ($models -contains "TCC")) {
+                Add-PreflightResult "NVIDIA WSL driver-model prerequisite" "UNSUPPORTED" "At least one NVIDIA GPU reports TCC mode; NVIDIA documents WSL GPU acceleration for WDDM mode, not TCC."
+            } elseif ($models.Count -eq @($query).Count -and $models.Count -gt 0 -and @($models | Where-Object { $_ -ne "WDDM" }).Count -eq 0) {
+                Add-PreflightResult "NVIDIA WSL driver-model prerequisite" "PASS" "All enumerated NVIDIA GPUs report WDDM mode, the required model for NVIDIA CUDA GPU acceleration in WSL."
             } else {
-                Add-PreflightResult "NVIDIA WSL driver-model prerequisite" "UNKNOWN" ("GPU and driver were queried, but the current driver model could not be parsed from: " + $queryText)
+                Add-PreflightResult "NVIDIA WSL driver-model prerequisite" "UNKNOWN" ("GPU and driver were queried, but not every current driver model could be confirmed as WDDM: " + $queryText)
             }
             $nvidiaSmiOK=$true
             break
