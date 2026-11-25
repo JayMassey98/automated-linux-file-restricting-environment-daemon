@@ -8,6 +8,7 @@ JOBS="${JOBS:-4}"
 LLAMA_PIN="bec4772f6a2527d371557b5d2032641e5ff7619c"
 VALIDATION_MODEL="$MODEL_DIR/Qwen2.5-1.5B-Instruct-GGUF/qwen2.5-1.5b-instruct-q4_k_m.gguf"
 PRODUCTION_MODEL_DIR="$MODEL_DIR/Qwen3.6-27B-GGUF"
+SUPPLIED_DIR="${SUPPLIED_DIR:-$HOME/alfred-supplied}"
 
 log() { printf '\n[ALFRED] %s\n' "$*"; }
 die() { printf '[ALFRED] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -134,14 +135,32 @@ install_cuda() {
         die "Driver $driver is below ALFRED's supported automatic toolkit floor. No driver update will be attempted; contact IT or use CPU/Vulkan."
     fi
     log "Installing $package only. No Linux NVIDIA driver package will be installed."
-    sudo apt-get update
-    sudo apt-get install -y ca-certificates wget
-    tmpdir="$(mktemp -d)"
-    wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb -O "$tmpdir/cuda-keyring.deb"
-    sudo dpkg -i "$tmpdir/cuda-keyring.deb"
-    rm -rf "$tmpdir"
-    sudo apt-get update
-    sudo apt-get install -y "$package"
+    if [[ "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "1" || "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "true" || "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "yes" ]]; then
+        local -a local_repo_debs=("$SUPPLIED_DIR"/cuda-repo-ubuntu2404-*-local_*.deb)
+        [[ -f "${local_repo_debs[0]}" ]] || die "Supplied CUDA local-repository installer not found. Put NVIDIA's cuda-repo-ubuntu2404-*-local_*.deb file in $SUPPLIED_DIR."
+        (("${#local_repo_debs[@]}" == 1)) || die "Expected exactly one supplied CUDA local-repository .deb in $SUPPLIED_DIR; found ${#local_repo_debs[@]}."
+        log "Installing supplied CUDA repository package: ${local_repo_debs[0]}"
+        sudo dpkg -i "${local_repo_debs[0]}" || die "Could not install the supplied CUDA local-repository .deb. Check that it is for Ubuntu 24.04 x86_64."
+        local repo_list
+        repo_list="$(find /var -maxdepth 3 -path '/var/cuda-repo-ubuntu2404-*-local/*.list' -type f -print -quit)"
+        [[ -n "$repo_list" ]] || die "The supplied CUDA repository package did not install an APT source list under /var."
+        log "Refreshing package metadata from the supplied local CUDA repository only."
+        sudo apt-get update -o Dir::Etc::sourcelist="$repo_list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+        local candidate
+        candidate="$(apt-cache policy "$package" | awk '/Candidate:/ {print $2; exit}')"
+        [[ -n "$candidate" && "$candidate" != "(none)" ]] || die "The supplied CUDA repository does not contain $package. Supply a local-repository installer containing a toolkit compatible with driver $driver."
+        log "Installing $package from local media only; APT downloads are disabled."
+        sudo apt-get install --no-download -y "$package"
+    else
+        sudo apt-get update
+        sudo apt-get install -y ca-certificates wget
+        tmpdir="$(mktemp -d)"
+        wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb -O "$tmpdir/cuda-keyring.deb"
+        sudo dpkg -i "$tmpdir/cuda-keyring.deb"
+        rm -rf "$tmpdir"
+        sudo apt-get update
+        sudo apt-get install -y "$package"
+    fi
     for cuda_bin in /usr/local/cuda/bin /usr/local/cuda-*/bin; do
         if [[ -x "$cuda_bin/nvcc" ]]; then export PATH="$cuda_bin:$PATH"; break; fi
     done
@@ -200,14 +219,28 @@ prepare_llama() {
         libvulkan-dev mesa-vulkan-drivers vulkan-tools glslc
     mkdir -p "$(dirname "$LLAMA_DIR")" "$MODEL_DIR"
 
-    if [[ -d "$LLAMA_DIR/.git" ]]; then
-        [[ -z "$(git -C "$LLAMA_DIR" status --porcelain)" ]] || die "Existing llama.cpp checkout has local changes: $LLAMA_DIR. Commit or back them up before pinning."
-        git -C "$LLAMA_DIR" fetch --depth=1 origin "$LLAMA_PIN"
-    elif [[ -e "$LLAMA_DIR" ]]; then
-        die "$LLAMA_DIR exists but is not a Git checkout. Move it or set LLAMA_DIR to another path."
+    if [[ "${USE_SUPPLIED_INSTALL_LLAMA:-0}" == "1" || "${USE_SUPPLIED_INSTALL_LLAMA:-0}" == "true" || "${USE_SUPPLIED_INSTALL_LLAMA:-0}" == "yes" ]]; then
+        local bundle="$SUPPLIED_DIR/llama.cpp.bundle"
+        [[ -f "$bundle" ]] || die "Supplied llama.cpp Git bundle not found: $bundle. Create it from the pinned commit and copy it into $SUPPLIED_DIR."
+        if [[ -d "$LLAMA_DIR/.git" ]]; then
+            [[ -z "$(git -C "$LLAMA_DIR" status --porcelain)" ]] || die "Existing llama.cpp checkout has local changes: $LLAMA_DIR. Commit or back them up before pinning."
+            git -C "$LLAMA_DIR" fetch "$bundle" "$LLAMA_PIN"
+        elif [[ -e "$LLAMA_DIR" ]]; then
+            die "$LLAMA_DIR exists but is not a Git checkout. Move it or set LLAMA_DIR to another path."
+        else
+            git clone --no-checkout "$bundle" "$LLAMA_DIR"
+        fi
+        git -C "$LLAMA_DIR" cat-file -e "$LLAMA_PIN^{commit}" 2>/dev/null || die "The supplied llama.cpp bundle does not contain required pinned commit $LLAMA_PIN."
     else
-        git clone https://github.com/ggml-org/llama.cpp.git "$LLAMA_DIR"
-        git -C "$LLAMA_DIR" fetch --depth=1 origin "$LLAMA_PIN"
+        if [[ -d "$LLAMA_DIR/.git" ]]; then
+            [[ -z "$(git -C "$LLAMA_DIR" status --porcelain)" ]] || die "Existing llama.cpp checkout has local changes: $LLAMA_DIR. Commit or back them up before pinning."
+            git -C "$LLAMA_DIR" fetch --depth=1 origin "$LLAMA_PIN"
+        elif [[ -e "$LLAMA_DIR" ]]; then
+            die "$LLAMA_DIR exists but is not a Git checkout. Move it or set LLAMA_DIR to another path."
+        else
+            git clone https://github.com/ggml-org/llama.cpp.git "$LLAMA_DIR"
+            git -C "$LLAMA_DIR" fetch --depth=1 origin "$LLAMA_PIN"
+        fi
     fi
     git -C "$LLAMA_DIR" checkout --detach "$LLAMA_PIN"
     [[ "$(git -C "$LLAMA_DIR" rev-parse HEAD)" == "$LLAMA_PIN" ]] || die "llama.cpp commit pin verification failed."
