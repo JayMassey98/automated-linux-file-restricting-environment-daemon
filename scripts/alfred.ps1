@@ -3,7 +3,7 @@ param(
     [ValidateSet("host", "configure", "detect", "verify", "install", "install-cuda", "prepare", "build", "serve", "all")]
     [string]$Stage = "all",
     [string]$Distro = "Ubuntu-24.04",
-    [switch]$UseLocalModels
+    [switch]$UseSuppliedModels
 )
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -51,12 +51,12 @@ function Invoke-LinuxStage([string]$LinuxStage) {
     Write-Host "Running ALFRED Linux stage '$LinuxStage' in $Distro..."
     # Deliver the script as a temporary file so stdin remains attached to the
     # console for interactive confirmation and sudo password prompts.
-    $modelMode = if ($UseLocalModels -and $LinuxStage -eq "prepare") { "USE_LOCAL_MODELS=1 " } else { "" }
+    $modelMode = if ($UseSuppliedModels -and $LinuxStage -eq "prepare") { "USE_SUPPLIED_MODELS=1 " } else { "" }
     $command = 'tmp=$(mktemp); printf "%s" "' + $encoded + '" | base64 -d > "$tmp"; ' + $modelMode + 'bash "$tmp" ' + $LinuxStage + '; status=$?; rm -f "$tmp"; exit "$status"'
     & wsl.exe --distribution $Distro --exec bash -lc $command
     if ($LASTEXITCODE -ne 0) { throw "ALFRED Linux stage '$LinuxStage' failed with exit code $LASTEXITCODE." }
 }
-if ($UseLocalModels -and $Stage -ne "prepare") { throw "-UseLocalModels is supported with -Stage prepare only." }
+if ($UseSuppliedModels -and $Stage -ne "prepare") { throw "-UseSuppliedModels is supported with -Stage prepare only." }
 switch ($Stage) {
     "host" { Invoke-HostSetup }
     "configure" {
