@@ -188,12 +188,8 @@ function Invoke-NetworkPreflight {
             $wslSignals+="registered WSL Store package"
         }
     } catch {}
-    try {
-        if (Test-Path -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss") {
-            $wslInstalled=$true
-            $wslSignals+="WSL machine registration key"
-        }
-    } catch {}
+    # Deliberately do not use the generic Lxss registry root as an install
+    # signal: it can exist independently of a usable WSL runtime.
     if (-not $wslInstalled) {
         foreach ($name in @("WSL version","WSL status","WSL distributions")) {
             Add-PreflightResult $name "UNKNOWN" "WSL installation was not positively detected; wsl.exe was not invoked to avoid triggering the interactive installation prompt."
