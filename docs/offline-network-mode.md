@@ -36,9 +36,13 @@ The Linux-only command `bash scripts/alfred.sh verify-network` checks interface 
 5. Verify the effective configuration and runtime state. If the Windows policy overrides the requested mode, the WSL version does not support it, the firewall state cannot be read, or any check fails, report failure and do not claim isolation.
 6. Online mode restores the exact saved configuration and firewall values, then shuts down WSL. It must not guess if the recovery record is absent or invalid.
 
-## Windows compatibility gate
+## Windows-version-specific isolation paths
 
-Microsoft documents the WSL Hyper-V firewall feature for Windows 11 22H2 and later (with WSL 2.0.9 or later). The WSL `networkingMode` setting, including `none`, is also documented as Windows 11-only and requires Windows 11 version 22H2 or higher. Windows 10 build 19045 therefore does not meet the documented platform requirements for this design. On such a host, ALFRED must report the unsupported platform and must not claim that writing `networkingMode=none` or querying Hyper-V firewall policy provides isolation. A separate, explicitly supported Windows 10 isolation design would require its own threat analysis and validation; it must not be improvised by changing host firewall policy.
+Windows 10 remains a supported ALFRED host for WSL setup, GPU compute, model execution, and other functionality that is available on that platform. The Windows 11 networking controls described here are not prerequisites for using ALFRED generally.
+
+Microsoft documents the WSL Hyper-V firewall feature and the WSL `networkingMode` setting (including `none`) for Windows 11 22H2 and later, with a sufficiently recent WSL release. These controls must not be assumed to exist on Windows 10. On Windows 10, the audit should report unavailable Hyper-V firewall cmdlets as capability information—not as a verdict that Windows 10 or ALFRED is unsupported.
+
+The enforcement sequence above is therefore the proposed Windows 11 path only. Windows 10 needs a distinct isolation implementation using controls that are actually supported on Windows 10 (including the relevant WSL networking and host-firewall behavior), with its own threat analysis, rollback design, and end-to-end packet-reachability tests. Do not improvise this by changing host firewall policy, and do not claim offline isolation on Windows 10 until that path has been implemented and validated. Until then, Windows 10 remains usable for ALFRED workloads, but its offline network-isolation mode is not yet available.
 
 ## Scope and limitations
 
