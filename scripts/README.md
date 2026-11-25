@@ -285,3 +285,20 @@ The toolkit compatibility table is deliberately conservative and must be revisit
 Official references:
 - [NVIDIA CUDA on WSL User Guide](https://docs.nvidia.com/cuda/wsl-user-guide/) — Windows driver provides WSL GPU support; do not install a Linux display driver.
 - [CUDA Toolkit release notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/) — minimum driver compatibility is toolkit-release-specific.
+
+
+### Windows-side NVIDIA inventory (works before WSL is installed)
+
+The Windows `preflight-network` stage now includes a read-only NVIDIA inventory. It queries Windows Plug and Play driver metadata and display-adapter metadata, then checks the standard NVIDIA NVSMI executable location. If it finds an executable with a valid Authenticode signature attributable to NVIDIA, it runs read-only `nvidia-smi` queries for GPU name, driver version, and current driver model.
+
+Run from ordinary PowerShell:
+
+    .\scripts\alfred.ps1 -Stage preflight-network
+
+This works without a WSL distribution. It does not download or install `nvidia-smi`, install/update a driver, change GPU mode, or modify the device. If the NVIDIA utility is absent or its signature/query cannot be validated, the result is UNKNOWN; ALFRED does not try to repair it.
+
+NVIDIA documents WSL CUDA GPU acceleration for GPUs using the WDDM driver model; TCC mode is not supported for this WSL use case. The preflight therefore reports WDDM as a prerequisite signal and TCC as unsupported. A WDDM result is **not** proof that WSL GPU passthrough will work: final confirmation still requires the WSL-visible `/dev/dxg` and `nvidia-smi` checks after you install WSL and Ubuntu yourself.
+
+References:
+- [NVIDIA CUDA on WSL User Guide](https://docs.nvidia.com/cuda/wsl-user-guide/) — GPU acceleration is supported for GeForce and RTX GPUs in WDDM mode, not TCC mode.
+- [NVIDIA nvidia-smi query reference](https://docs.nvidia.com/deploy/nvidia-smi/) — queryable product name and driver version.
