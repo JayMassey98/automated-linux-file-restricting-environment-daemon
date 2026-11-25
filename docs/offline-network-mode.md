@@ -1,6 +1,6 @@
 # ALFRED online/offline network mode design
 
-**Status: design only — no network-isolation control is enabled by this document.**
+**Status: partial implementation.** Read-only Linux and Windows verification is implemented as -Stage verify-network. The commands that change networking modes (offline and online) are not implemented yet.
 
 ALFRED needs two explicit operating modes:
 
@@ -17,7 +17,7 @@ The proposed Windows PowerShell interface is:
 .\scripts\alfred.ps1 -Stage online
 \`\`\`
 
-These commands are **not implemented yet**. Do not use them until a tested implementation is merged.
+Only verify-network is implemented. The offline and online commands are still proposed interfaces; do not use them until a tested implementation is merged.
 
 ## Enforcement design
 
@@ -35,6 +35,12 @@ These commands are **not implemented yet**. Do not use them until a tested imple
 - Windows enterprise policy (GPO/Intune), privileged host processes, and host-level compromise may override or bypass local settings. ALFRED cannot promise an absolute air gap inside WSL.
 - This mode is a practical local network-disconnection control, not a substitute for employer-approved endpoint controls or a formally isolated machine. If policy requires a guaranteed air gap, use an approved disconnected environment.
 - GPU compute is expected to remain available through WSL GPU paravirtualization, but this must be tested on both the NVIDIA work PC and AMD ROCm machine; networking changes must not be assumed harmless to every driver/runtime combination.
+
+## Implemented verification checks
+
+The read-only verifier checks the explicit .wslconfig networking mode, active WSL Hyper-V firewall settings, enabled WSL Hyper-V allow rules, non-loopback Linux IP addresses, and IPv4/IPv6 default routes. It does not change settings. The Linux verifier can be run directly with bash scripts/alfred.sh verify-network; the PowerShell wrapper additionally checks Windows firewall state and requires elevation.
+
+These checks are necessary but not sufficient to prove an absolute air gap. In particular, they do not protect against a privileged or compromised Windows host, nor do they establish that employer policy permits the configuration.
 
 ## Required verification before release
 
