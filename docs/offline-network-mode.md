@@ -36,6 +36,10 @@ The Linux-only command `bash scripts/alfred.sh verify-network` checks interface 
 5. Verify the effective configuration and runtime state. If the Windows policy overrides the requested mode, the WSL version does not support it, the firewall state cannot be read, or any check fails, report failure and do not claim isolation.
 6. Online mode restores the exact saved configuration and firewall values, then shuts down WSL. It must not guess if the recovery record is absent or invalid.
 
+## Windows compatibility gate
+
+Microsoft documents the WSL Hyper-V firewall feature for Windows 11 22H2 and later (with WSL 2.0.9 or later). The WSL `networkingMode` setting, including `none`, is also documented as Windows 11-only and requires Windows 11 version 22H2 or higher. Windows 10 build 19045 therefore does not meet the documented platform requirements for this design. On such a host, ALFRED must report the unsupported platform and must not claim that writing `networkingMode=none` or querying Hyper-V firewall policy provides isolation. A separate, explicitly supported Windows 10 isolation design would require its own threat analysis and validation; it must not be improvised by changing host firewall policy.
+
 ## Scope and limitations
 
 - \`.wslconfig\` is global to all WSL 2 distributions for the Windows user. Offline mode therefore affects every WSL 2 distribution for that user, not just ALFRED.
