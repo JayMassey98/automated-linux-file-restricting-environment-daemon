@@ -223,7 +223,9 @@ install_build_dependencies() {
 
     if [[ "${USE_SUPPLIED_INSTALL_UBUNTU_BUILD_DEPENDENCIES:-0}" == "1" || "${USE_SUPPLIED_INSTALL_UBUNTU_BUILD_DEPENDENCIES:-0}" == "true" || "${USE_SUPPLIED_INSTALL_UBUNTU_BUILD_DEPENDENCIES:-0}" == "yes" ]]; then
         local deb_dir="$SUPPLIED_DIR/ubuntu-build-deps"
+        shopt -s nullglob
         local -a supplied_debs=("$deb_dir"/*.deb)
+        shopt -u nullglob
         (("${#supplied_debs[@]}" > 0)) || die "No supplied Ubuntu build-dependency .deb files found in $deb_dir. Stage the complete package set there and retry."
         log "Installing Ubuntu build dependencies from ${#supplied_debs[@]} supplied .deb files. Network downloads are disabled."
         sudo apt-get install --no-download -y "${supplied_debs[@]}" || die "Supplied Ubuntu build dependencies are incomplete or incompatible. Prepare the bundle on a clean Ubuntu 24.04 amd64 system and include all downloaded dependency .deb files."
