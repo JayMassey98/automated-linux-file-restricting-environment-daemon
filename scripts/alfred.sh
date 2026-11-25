@@ -15,7 +15,7 @@ nvidia_smi_path() {
     if command -v nvidia-smi >/dev/null 2>&1; then
         command -v nvidia-smi
     elif [[ -x /usr/lib/wsl/lib/nvidia-smi ]]; then
-        printf '%s\\n' /usr/lib/wsl/lib/nvidia-smi
+        printf '%s\n' /usr/lib/wsl/lib/nvidia-smi
     else
         return 1
     fi
@@ -122,13 +122,13 @@ install_cuda() {
     driver="$("$smi" --query-gpu=driver_version --format=csv,noheader | head -n 1 | tr -d '[:space:]')"
     [[ "$driver" =~ ^[0-9]+\.[0-9]+ ]] || die "Could not parse NVIDIA driver version: $driver"
     log "Detected Windows NVIDIA driver $driver through WSL."
-    if [[ "$(printf '%s\\n' "$driver" "576.57" | sort -V | head -n1)" == "576.57" ]]; then
+    if [[ "$(printf '%s\n' "$driver" "576.57" | sort -V | head -n1)" == "576.57" ]]; then
         package="cuda-toolkit-12-9"
-    elif [[ "$(printf '%s\\n' "$driver" "572.61" | sort -V | head -n1)" == "572.61" ]]; then
+    elif [[ "$(printf '%s\n' "$driver" "572.61" | sort -V | head -n1)" == "572.61" ]]; then
         package="cuda-toolkit-12-8"
-    elif [[ "$(printf '%s\\n' "$driver" "561.17" | sort -V | head -n1)" == "561.17" ]]; then
+    elif [[ "$(printf '%s\n' "$driver" "561.17" | sort -V | head -n1)" == "561.17" ]]; then
         package="cuda-toolkit-12-6"
-    elif [[ "$(printf '%s\\n' "$driver" "551.78" | sort -V | head -n1)" == "551.78" ]]; then
+    elif [[ "$(printf '%s\n' "$driver" "551.78" | sort -V | head -n1)" == "551.78" ]]; then
         package="cuda-toolkit-12-4"
     else
         die "Driver $driver is below ALFRED's supported automatic toolkit floor. No driver update will be attempted; contact IT or use CPU/Vulkan."
