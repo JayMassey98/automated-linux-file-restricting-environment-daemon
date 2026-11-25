@@ -157,37 +157,69 @@ function Invoke-NetworkPreflight {
         Add-PreflightResult "General ALFRED Windows support" "UNKNOWN" "Could not identify Windows build."
     }
 
-    $wslEntries=@(
-        [pscustomobject]@{Name="WSL version";Args=@("--version")},
-        [pscustomobject]@{Name="WSL status";Args=@("--status")},
-        [pscustomobject]@{Name="WSL distributions";Args=@("--list","--verbose")}
-    )
-    foreach ($entry in $wslEntries) {
-        try {
-            $arguments=$entry.Args
-            $output=(& wsl.exe @arguments 2>&1 | Out-String).Trim()
-            $exitCode=$LASTEXITCODE
-            if ($exitCode -ne 0) { throw ("wsl.exe exit " + $exitCode + ": " + $output) }
-            if ($entry.Name -eq "WSL distributions") {
-                $clean=($output -replace [char]0,"").Trim()
-                $found=$false
-                $generation=$null
-                foreach ($line in ($clean -split '\r?\n')) {
-                    $candidate=$line.Trim()
-                    if ($candidate -match ("^\*?\s*" + [regex]::Escape($Distro) + "\s+")) {
-                        $found=$true
-                        if ($candidate -match "\s([12])\s*$") {$generation=$Matches[1]}
+    # Do not invoke the inbox wsl.exe stub when WSL is absent: it can open an
+    # interactive, elevation-requiring installation prompt. Require a positive
+    # read-only installation signal before invoking the CLI.
+    $wslInstalled=$false
+    $wslSignals=@()
+    try {
+        $services=@(Get-Service -Name "WslService","LxssManager" -ErrorAction SilentlyContinue)
+        if ($services.Count -gt 0) {
+            $wslInstalled=$true
+            $wslSignals+=("service(s): " + (($services | ForEach-Object {$_.Name}) -join ", "))
+        }
+    } catch {}
+    try {
+        if (Get-AppxPackage -Name "MicrosoftCorporationII.WindowsSubsystemForLinux" -ErrorAction SilentlyContinue) {
+            $wslInstalled=$true
+            $wslSignals+="registered WSL Store package"
+        }
+    } catch {}
+    try {
+        if (Test-Path -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss") {
+            $wslInstalled=$true
+            $wslSignals+="WSL machine registration key"
+        }
+    } catch {}
+    if (-not $wslInstalled) {
+        foreach ($name in @("WSL version","WSL status","WSL distributions")) {
+            Add-PreflightResult $name "UNKNOWN" "WSL installation was not positively detected; wsl.exe was not invoked to avoid triggering the interactive installation prompt."
+        }
+        Add-PreflightResult "Target distribution" "UNKNOWN" "WSL is not detected; no distribution can be enumerated."
+    } else {
+        Add-PreflightResult "WSL installation detection" "PASS" ($wslSignals -join "; ")
+        $wslEntries=@(
+            [pscustomobject]@{Name="WSL version";Args=@("--version")},
+            [pscustomobject]@{Name="WSL status";Args=@("--status")},
+            [pscustomobject]@{Name="WSL distributions";Args=@("--list","--verbose")}
+        )
+        foreach ($entry in $wslEntries) {
+            try {
+                $arguments=$entry.Args
+                $output=(& wsl.exe @arguments 2>&1 | Out-String).Trim()
+                $exitCode=$LASTEXITCODE
+                if ($exitCode -ne 0) { throw ("wsl.exe exit " + $exitCode + ": " + $output) }
+                if ($entry.Name -eq "WSL distributions") {
+                    $clean=($output -replace [char]0,"").Trim()
+                    $found=$false
+                    $generation=$null
+                    foreach ($line in ($clean -split '\r?\n')) {
+                        $candidate=$line.Trim()
+                        if ($candidate -match ("^\*?\s*" + [regex]::Escape($Distro) + "\s+")) {
+                            $found=$true
+                            if ($candidate -match "\s([12])\s*$") {$generation=$Matches[1]}
+                        }
                     }
-                }
-                if (-not $found) {Add-PreflightResult "Target distribution" "UNKNOWN" ("Could not confirm " + $Distro + ".")}
-                elseif ($generation -eq "2") {Add-PreflightResult "Target distribution" "PASS" ($Distro + " registered as WSL 2; not launched.")}
-                elseif ($generation -eq "1") {Add-PreflightResult "Target distribution" "UNSUPPORTED" ($Distro + " is WSL 1; design requires WSL 2.")}
-                else {Add-PreflightResult "Target distribution" "UNKNOWN" "Distro found; WSL generation could not be parsed."}
-                Add-PreflightResult $entry.Name "PASS" $clean
-            } else {Add-PreflightResult $entry.Name "PASS" $output}
-        } catch {
-            Add-PreflightResult $entry.Name "UNKNOWN" $_.Exception.Message
-            if ($entry.Name -eq "WSL distributions") {Add-PreflightResult "Target distribution" "UNKNOWN" "Could not enumerate distributions."}
+                    if (-not $found) {Add-PreflightResult "Target distribution" "UNKNOWN" ("Could not confirm " + $Distro + ".")}
+                    elseif ($generation -eq "2") {Add-PreflightResult "Target distribution" "PASS" ($Distro + " registered as WSL 2; not launched.")}
+                    elseif ($generation -eq "1") {Add-PreflightResult "Target distribution" "UNSUPPORTED" ($Distro + " is WSL 1; design requires WSL 2.")}
+                    else {Add-PreflightResult "Target distribution" "UNKNOWN" "Distro found; WSL generation could not be parsed."}
+                    Add-PreflightResult $entry.Name "PASS" $clean
+                } else {Add-PreflightResult $entry.Name "PASS" $output}
+            } catch {
+                Add-PreflightResult $entry.Name "UNKNOWN" $_.Exception.Message
+                if ($entry.Name -eq "WSL distributions") {Add-PreflightResult "Target distribution" "UNKNOWN" "Could not enumerate distributions."}
+            }
         }
     }
 
