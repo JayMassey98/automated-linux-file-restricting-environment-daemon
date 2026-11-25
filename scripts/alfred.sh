@@ -11,6 +11,32 @@ PRODUCTION_MODEL_DIR="$MODEL_DIR/Qwen3.6-27B-GGUF"
 
 log() { printf '\n[ALFRED] %s\n' "$*"; }
 die() { printf '[ALFRED] ERROR: %s\n' "$*" >&2; exit 1; }
+nvidia_smi_path() {
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        command -v nvidia-smi
+    elif [[ -x /usr/lib/wsl/lib/nvidia-smi ]]; then
+        printf '%s\\n' /usr/lib/wsl/lib/nvidia-smi
+    else
+        return 1
+    fi
+}
+
+detect_hardware() {
+    require_wsl_user
+    log "WSL GPU and backend detection"
+    [[ -e /dev/dxg ]] && log "WSL GPU device /dev/dxg is present." || log "WARNING: /dev/dxg is absent."
+    local smi
+    if smi="$(nvidia_smi_path)"; then
+        log "NVIDIA utility: $smi"
+        "$smi" -L || log "WARNING: NVIDIA GPU enumeration failed."
+        "$smi" --query-gpu=name,driver_version --format=csv,noheader || true
+    else
+        log "No NVIDIA nvidia-smi utility found in WSL."
+    fi
+    command -v nvcc >/dev/null 2>&1 && nvcc --version || log "CUDA toolkit not installed."
+    command -v hipcc >/dev/null 2>&1 && log "HIP compiler: $(command -v hipcc)" || log "HIP compiler not installed."
+}
+
 
 require_wsl_user() {
     grep -qi microsoft /proc/version || die "Run this script inside WSL2."
