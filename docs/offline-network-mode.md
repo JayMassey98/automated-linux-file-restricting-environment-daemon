@@ -42,7 +42,22 @@ Windows 10 remains a supported ALFRED host for WSL setup, GPU compute, model exe
 
 Microsoft documents the WSL Hyper-V firewall feature and the WSL `networkingMode` setting (including `none`) for Windows 11 22H2 and later, with a sufficiently recent WSL release. These controls must not be assumed to exist on Windows 10. On Windows 10, the audit should report unavailable Hyper-V firewall cmdlets as capability information—not as a verdict that Windows 10 or ALFRED is unsupported.
 
-The enforcement sequence above is therefore the proposed Windows 11 path only. Windows 10 needs a distinct isolation implementation using controls that are actually supported on Windows 10 (including the relevant WSL networking and host-firewall behavior), with its own threat analysis, rollback design, and end-to-end packet-reachability tests. Do not improvise this by changing host firewall policy, and do not claim offline isolation on Windows 10 until that path has been implemented and validated. Until then, Windows 10 remains usable for ALFRED workloads, but its offline network-isolation mode is not yet available.
+The enforcement sequence above is therefore the proposed Windows 11 path only.
+
+### Windows 10 findings (research; no enforcement implemented)
+
+Windows 10 WSL2 uses the traditional NAT architecture. The WSL VM has its own virtual Ethernet interface and reaches external networks through host-managed NAT/shared-access components. Microsoft documents this NAT model and describes host-side DNS forwarding through the shared-access service. See [WSL networking](https://learn.microsoft.com/en-us/windows/wsl/networking) and [WSL networking troubleshooting](https://learn.microsoft.com/en-us/windows/wsl/troubleshooting).
+
+A Windows Defender Firewall rule attached to the physical outbound adapter, or an inbound rule attached to `vEthernet (WSL)`, must **not** be treated as a proven WSL egress block. A WSL project report reproduced a case where WSL2 traffic still reached an external address despite those rules; the report is not a Microsoft security guarantee, but it is enough to reject that rule pattern as an assumed solution. See [WSL issue #6936](https://github.com/microsoft/WSL/issues/6936).
+
+Consequently, ALFRED must not implement Windows 10 offline mode by simply adding interface-scoped `New-NetFirewallRule` rules, changing the Windows firewall default outbound action, editing undocumented HNS state, or deleting Linux routes. Those approaches either lack a demonstrated enforcement boundary, can affect the whole host, depend on undocumented implementation details, or are controlled from inside the guest.
+
+The Windows 10 path remains an open design item. Viable directions to investigate are:
+- **Externally enforced isolation:** use an employer-approved network control (for example, a dedicated isolated VLAN/network policy) or physically disconnect the host's network interfaces for the offline session. This isolates the host as well as WSL and is not a WSL-only toggle.
+- **A supported host filtering product/driver:** only consider a Windows Filtering Platform (WFP) or equivalent product if its vendor explicitly supports filtering forwarded/NAT traffic from WSL2 on the exact Windows 10 build, and packet-level tests verify IPv4, IPv6, DNS, LAN, host-gateway, VPN, and alternate-adapter paths.
+- **A future ALFRED-managed host-wide disconnect mode:** investigate separately, with explicit operator consent, complete adapter inventory, reversible state capture, drift detection, and tests for Wi-Fi, Ethernet, USB tethering, VPN and virtual adapters. Do not implement this as part of the current per-WSL offline mode.
+
+Until one of these options has a documented enforcement boundary and repeatable tests, ALFRED must report Windows 10 per-WSL offline isolation as **unavailable**, while continuing to support Windows 10 for WSL setup, GPU compute, model execution, and ordinary online/offline staged workflows. If the requirement is a guarantee that the host and WSL cannot communicate with any network, use an employer-approved disconnected environment.
 
 ## Scope and limitations
 
