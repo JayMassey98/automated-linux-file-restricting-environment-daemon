@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("host", "configure", "detect", "verify", "audit-network", "install", "install-cuda", "prepare", "build", "serve", "all")]
+    [ValidateSet("host", "configure", "detect", "verify", "audit-network", "preflight-network", "install", "install-cuda", "prepare", "build", "serve", "all")]
     [string]$Stage = "all",
     [string]$Distro = "Ubuntu-24.04",
     [switch]$UseSuppliedModels,
@@ -121,6 +121,190 @@ function Invoke-NetworkAudit {
     Write-Host "=== Audit complete; no changes made. ==="
 }
 
+function Invoke-NetworkPreflight {
+    # Read-only discovery. No system settings are changed and no distro is launched.
+    $results = New-Object System.Collections.Generic.List[object]
+    $creatorId = "{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}"
+    function Add-PreflightResult([string]$Category,[string]$Status,[string]$Evidence) {
+        $results.Add([pscustomobject]@{Category=$Category;Status=$Status;Evidence=$Evidence})
+    }
+    Write-Host "=== ALFRED read-only isolation preflight ==="
+    $admin = $false
+    try {
+        $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal=New-Object Security.Principal.WindowsPrincipal($identity)
+        $admin=$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch {}
+    Write-Host ("Elevated PowerShell: " + $admin)
+
+    $build=0
+    try {
+        $os=Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+        [void][int]::TryParse([string]$os.BuildNumber,[ref]$build)
+        $ev=("Caption={0}; Version={1}; Build={2}; Architecture={3}" -f $os.Caption,$os.Version,$os.BuildNumber,$os.OSArchitecture)
+        if ($build -lt 22000) {
+            Add-PreflightResult "Host platform" "UNSUPPORTED" $ev
+            Add-PreflightResult "General ALFRED Windows support" "PASS" "Windows 10 is supported for ordinary online ALFRED operation."
+        } elseif ($build -ge 22621) {
+            Add-PreflightResult "Host platform" "UNKNOWN" ($ev + "; Windows 11 22H2+ candidate; project-tested provider matrix not declared.")
+            Add-PreflightResult "General ALFRED Windows support" "PASS" "Windows 11 detected; ordinary operation is separate from isolation eligibility."
+        } else {
+            Add-PreflightResult "Host platform" "UNSUPPORTED" ($ev + "; below Windows 11 22H2 minimum.")
+            Add-PreflightResult "General ALFRED Windows support" "UNKNOWN" "General support matrix for this older host is not declared here."
+        }
+    } catch {
+        Add-PreflightResult "Host platform" "UNKNOWN" $_.Exception.Message
+        Add-PreflightResult "General ALFRED Windows support" "UNKNOWN" "Could not identify Windows build."
+    }
+
+    $wslEntries=@(
+        [pscustomobject]@{Name="WSL version";Args=@("--version")},
+        [pscustomobject]@{Name="WSL status";Args=@("--status")},
+        [pscustomobject]@{Name="WSL distributions";Args=@("--list","--verbose")}
+    )
+    foreach ($entry in $wslEntries) {
+        try {
+            $output=(& wsl.exe @($entry.Args) 2>&1 | Out-String).Trim()
+            $exitCode=$LASTEXITCODE
+            if ($exitCode -ne 0) { throw ("wsl.exe exit " + $exitCode + ": " + $output) }
+            if ($entry.Name -eq "WSL distributions") {
+                $clean=($output -replace [char]0,"").Trim()
+                $found=$false
+                $generation=$null
+                foreach ($line in ($clean -split '\r?\n')) {
+                    $candidate=$line.Trim()
+                    if ($candidate -match ("^\*?\s*" + [regex]::Escape($Distro) + "\s+")) {
+                        $found=$true
+                        if ($candidate -match "\s([12])\s*$") {$generation=$Matches[1]}
+                    }
+                }
+                if (-not $found) {Add-PreflightResult "Target distribution" "UNKNOWN" ("Could not confirm " + $Distro + ".")}
+                elseif ($generation -eq "2") {Add-PreflightResult "Target distribution" "PASS" ($Distro + " registered as WSL 2; not launched.")}
+                elseif ($generation -eq "1") {Add-PreflightResult "Target distribution" "UNSUPPORTED" ($Distro + " is WSL 1; design requires WSL 2.")}
+                else {Add-PreflightResult "Target distribution" "UNKNOWN" "Distro found; WSL generation could not be parsed."}
+                Add-PreflightResult $entry.Name "PASS" $clean
+            } else {Add-PreflightResult $entry.Name "PASS" $output}
+        } catch {
+            Add-PreflightResult $entry.Name "UNKNOWN" $_.Exception.Message
+            if ($entry.Name -eq "WSL distributions") {Add-PreflightResult "Target distribution" "UNKNOWN" "Could not enumerate distributions."}
+        }
+    }
+
+    $names=@("Get-NetFirewallHyperVVMCreator","Get-NetFirewallHyperVVMSetting","Get-NetFirewallHyperVRule","Get-NetFirewallHyperVProfile","Set-NetFirewallHyperVVMSetting","New-NetFirewallHyperVVMSetting","Remove-NetFirewallHyperVRule")
+    $available=@{}
+    foreach ($name in $names) {
+        try {
+            $cmd=Get-Command $name -ErrorAction Stop
+            $available[$name]=$true
+            Add-PreflightResult ("Cmdlet " + $name) "PASS" ("Available; parameters: " + (@($cmd.Parameters.Keys) -join ", "))
+        } catch {
+            $available[$name]=$false
+            Add-PreflightResult ("Cmdlet " + $name) "UNKNOWN" "Not exposed here; underlying feature absence is not inferred."
+        }
+    }
+
+    $creatorOK=$false
+    if ($available["Get-NetFirewallHyperVVMCreator"]) {
+        try {
+            foreach ($item in @(Get-NetFirewallHyperVVMCreator -ErrorAction Stop)) {
+                if (([string]$item.VMCreatorId).Trim("{}") -ieq $creatorId.Trim("{}")) {$creatorOK=$true}
+            }
+            if ($creatorOK) {Add-PreflightResult "WSL VM creator identity" "PASS" ("Matched " + $creatorId)}
+            else {Add-PreflightResult "WSL VM creator identity" "UNKNOWN" ("Could not match " + $creatorId)}
+        } catch {Add-PreflightResult "WSL VM creator identity" "UNKNOWN" $_.Exception.Message}
+    } else {Add-PreflightResult "WSL VM creator identity" "UNKNOWN" "Creator query cmdlet unavailable."}
+
+    if ($available["Get-NetFirewallHyperVVMSetting"] -and $creatorOK) {
+        foreach ($store in @("ActiveStore","PersistentStore")) {
+            try {
+                $items=@(Get-NetFirewallHyperVVMSetting -PolicyStore $store -Name $creatorId -ErrorAction Stop)
+                if ($items.Count -eq 0) {Add-PreflightResult ("VM settings " + $store) "UNKNOWN" "No settings object returned."}
+                else {
+                    $summary=@()
+                    foreach ($item in $items) {
+                        foreach ($p in @("Enabled","DefaultInboundAction","DefaultOutboundAction","LoopbackEnabled","AllowHostPolicyMerge")) {
+                            if ($item.PSObject.Properties.Name -contains $p) {$summary+=($p + "=" + [string]$item.$p)}
+                        }
+                    }
+                    Add-PreflightResult ("VM settings " + $store) "PASS" ($summary -join "; ")
+                }
+            } catch {Add-PreflightResult ("VM settings " + $store) "UNKNOWN" $_.Exception.Message}
+        }
+    } else {Add-PreflightResult "WSL VM settings" "UNKNOWN" "Cannot query settings without cmdlet and confirmed creator."}
+
+    if ($available["Get-NetFirewallHyperVProfile"]) {
+        try {
+            $profiles=@(Get-NetFirewallHyperVProfile -PolicyStore ActiveStore -ErrorAction Stop)
+            $summary=@()
+            foreach ($item in $profiles) {
+                foreach ($p in @("Name","Enabled","DefaultInboundAction","DefaultOutboundAction","AllowHostPolicyMerge")) {
+                    if ($item.PSObject.Properties.Name -contains $p) {$summary+=($p + "=" + [string]$item.$p)}
+                }
+            }
+            if ($profiles.Count) {Add-PreflightResult "Hyper-V profiles ActiveStore" "PASS" ($summary -join "; ")}
+            else {Add-PreflightResult "Hyper-V profiles ActiveStore" "UNKNOWN" "No profile objects returned."}
+        } catch {Add-PreflightResult "Hyper-V profiles ActiveStore" "UNKNOWN" $_.Exception.Message}
+    } else {Add-PreflightResult "Hyper-V profiles ActiveStore" "UNKNOWN" "Profile query cmdlet unavailable."}
+
+    if ($available["Get-NetFirewallHyperVRule"] -and $creatorOK) {
+        try {
+            $rules=@(Get-NetFirewallHyperVRule -VMCreatorId $creatorId -ErrorAction Stop)
+            $summary=@("Rule count=" + $rules.Count)
+            foreach ($item in $rules) {
+                $parts=@()
+                foreach ($p in @("Name","DisplayName","Direction","Action","Enabled","Protocol","LocalPorts","RemoteAddresses")) {
+                    if ($item.PSObject.Properties.Name -contains $p) {$parts+=($p + "=" + [string]$item.$p)}
+                }
+                if ($parts.Count) {$summary+=($parts -join ", ")}
+            }
+            Add-PreflightResult "WSL Hyper-V rules" "PASS" ($summary -join " | ")
+        } catch {Add-PreflightResult "WSL Hyper-V rules" "UNKNOWN" $_.Exception.Message}
+    } else {Add-PreflightResult "WSL Hyper-V rules" "UNKNOWN" "Cannot query rules without cmdlet and confirmed creator."}
+
+    $config=Join-Path $HOME ".wslconfig"
+    try {
+        if (Test-Path -LiteralPath $config -PathType Leaf) {
+            $bytes=[IO.File]::ReadAllBytes($config)
+            $sha=[Security.Cryptography.SHA256]::Create()
+            try {$hash=([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace("-","")} finally {$sha.Dispose()}
+            $raw=[Text.Encoding]::UTF8.GetString($bytes)
+            $mode="not explicitly set"
+            if ($raw -match "(?im)^\s*networkingMode\s*=\s*([^\r\n#;]+)") {$mode=$Matches[1].Trim()}
+            $enc="No recognized BOM"
+            if ($bytes.Length -ge 3 -and $bytes[0] -eq 239 -and $bytes[1] -eq 187 -and $bytes[2] -eq 191) {$enc="UTF-8 BOM"}
+            elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 255 -and $bytes[1] -eq 254) {$enc="UTF-16 LE BOM"}
+            elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 254 -and $bytes[1] -eq 255) {$enc="UTF-16 BE BOM"}
+            $ending="No newline detected"
+            if ($raw.Contains(([string][char]13)+([string][char]10))) {$ending="CRLF present"}
+            elseif ($raw.Contains([string][char]10)) {$ending="LF present"}
+            Add-PreflightResult ".wslconfig" "PASS" ("Exists; bytes=" + $bytes.Length + "; SHA256=" + $hash + "; encoding=" + $enc + "; line endings=" + $ending + "; networkingMode=" + $mode + "; global to this user's WSL 2 distributions.")
+        } else {Add-PreflightResult ".wslconfig" "PASS" "Absent; WSL defaults and policy apply. No file created."}
+    } catch {Add-PreflightResult ".wslconfig" "UNKNOWN" $_.Exception.Message}
+
+    foreach ($path in @("HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Subsystem for Linux","HKCU:\SOFTWARE\Policies\Microsoft\Windows\Windows Subsystem for Linux","HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\WindowsSubsystemForLinux")) {
+        try {
+            if (Test-Path -LiteralPath $path -ErrorAction Stop) {
+                $key=Get-Item -LiteralPath $path -ErrorAction Stop
+                Add-PreflightResult ("Policy indicator " + $path) "UNKNOWN" ("Key present; value names: " + (@($key.GetValueNames()) -join ", ") + ". Values not dumped.")
+            } else {Add-PreflightResult ("Policy indicator " + $path) "PASS" "Key absent at this path only; GPO/MDM/CSP absence is not established."}
+        } catch {Add-PreflightResult ("Policy indicator " + $path) "UNKNOWN" $_.Exception.Message}
+    }
+
+    Write-Host ""
+    Write-Host "[Preflight results]"
+    $results | Format-Table Category,Status,Evidence -Wrap -AutoSize
+    Write-Host ""
+    Write-Host "[Eligibility]"
+    if ($build -gt 0 -and $build -lt 22000) {
+        Write-Host "Isolation provider eligibility: UNSUPPORTED (Windows 10 provider not implemented)."
+        Write-Host "General ALFRED Windows 10 operation: supported for normal online use."
+    } elseif ($build -ge 22000) {
+        Write-Host "Isolation provider eligibility: UNKNOWN / NOT APPROVED; no project-tested provider matrix is declared."
+    } else {Write-Host "Isolation provider eligibility: UNKNOWN; host build could not be established."}
+    Write-Host "Inventory only; not an isolation test or air-gap attestation. No changes made."
+    Write-Host "=== Preflight complete ==="
+}
+
 function Invoke-HostSetup {
     Assert-Administrator
     Write-Host "Enabling Windows Subsystem for Linux..."
@@ -181,6 +365,7 @@ switch ($Stage) {
     "detect" { Invoke-LinuxStage "detect" }
     "verify" { Invoke-LinuxStage "verify" }
     "audit-network" { Invoke-NetworkAudit }
+    "preflight-network" { Invoke-NetworkPreflight }
     "install" { Invoke-LinuxStage "install" }
     "install-cuda" { Invoke-LinuxStage "install-cuda" }
     "prepare" { Invoke-LinuxStage "prepare" }
