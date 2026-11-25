@@ -30,7 +30,7 @@ assert_toolkit_only_apt_plan() {
     while IFS= read -r line; do
         [[ "$line" =~ ^Inst[[:space:]]+([^[:space:]]+) ]] || continue
         planned="${BASH_REMATCH[1]}"
-        if [[ "$planned" =~ ^(cuda-drivers($|-)|nvidia-|libnvidia-) ]]; then
+        if [[ "$planned" =~ ^(cuda-drivers($|-)|nvidia-|libnvidia-|linux-modules-nvidia-|linux-objects-nvidia-|linux-signatures-nvidia-) ]]; then
             die "APT's proposed transaction includes driver-related package '$planned'. ALFRED will not install or alter NVIDIA drivers on this WSL host. No toolkit installation was attempted."
         fi
     done <<< "$plan"
