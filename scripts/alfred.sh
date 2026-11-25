@@ -114,6 +114,46 @@ verify_environment() {
 }
 
 
+
+verify_network_isolation() {
+    require_wsl_user
+    command -v ip >/dev/null 2>&1 || die "The iproute2 'ip' utility is required to verify WSL network isolation."
+    local failures=0 output
+    log "Inspecting live Linux network interfaces and routes."
+    output="$(ip -o addr show scope global 2>/dev/null || true)"
+    if [[ -n "$output" ]]; then
+        printf '[FAIL] Non-loopback global IP addresses remain:\n%s\n' "$output"
+        failures=$((failures + 1))
+    else
+        printf '[OK]   No global-scope IP addresses are configured.\n'
+    fi
+    output="$(ip -o addr show 2>/dev/null | awk '$2 != "lo" {print}' || true)"
+    if [[ -n "$output" ]]; then
+        printf '[FAIL] Non-loopback interfaces still have addresses:\n%s\n' "$output"
+        failures=$((failures + 1))
+    else
+        printf '[OK]   No non-loopback interface has an IP address.\n'
+    fi
+    output="$(ip -4 route show default 2>/dev/null || true)"
+    if [[ -n "$output" ]]; then
+        printf '[FAIL] IPv4 default route remains:\n%s\n' "$output"
+        failures=$((failures + 1))
+    else
+        printf '[OK]   No IPv4 default route exists.\n'
+    fi
+    output="$(ip -6 route show default 2>/dev/null || true)"
+    if [[ -n "$output" ]]; then
+        printf '[FAIL] IPv6 default route remains:\n%s\n' "$output"
+        failures=$((failures + 1))
+    else
+        printf '[OK]   No IPv6 default route exists.\n'
+    fi
+    if (( failures > 0 )); then
+        die "$failures live network isolation check(s) failed. Do not treat this WSL instance as offline."
+    fi
+    log "Linux-side network checks passed. Windows-side firewall policy and host connectivity must also be verified; this check alone is not proof of an air gap."
+}
+
 install_cuda() {
     require_wsl_user
     [[ -e /dev/dxg ]] || die "WSL GPU device /dev/dxg is missing. Check WSL2 and the existing Windows NVIDIA driver."
@@ -403,6 +443,7 @@ case "$STAGE" in
     configure) configure_wsl ;;
     detect) detect_hardware ;;
     verify) verify_environment ;;
+    verify-network) verify_network_isolation ;;
     install) install_rocm ;;
     install-cuda) install_cuda ;;
     prepare) prepare_llama ;;
@@ -414,5 +455,5 @@ case "$STAGE" in
         prepare_llama
         build_backends
         ;;
-    *) die "Usage: alfred.sh {configure|detect|verify|install|install-cuda|prepare|build|serve|all}" ;;
+    *) die "Usage: alfred.sh {configure|detect|verify|verify-network|install|install-cuda|prepare|build|serve|all}" ;;
 esac
