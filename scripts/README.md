@@ -9,7 +9,7 @@ The PowerShell entry point transfers the Linux script into a temporary file insi
 
 ## Prerequisites
 
-- Windows 11 with WSL2 support.
+- Windows 10 or Windows 11 with WSL2 support. Network-isolation capabilities differ by Windows version; see the network audit and isolation design notes below.
 - Ubuntu 24.04 WSL distribution.
 - For AMD, a GPU supported by the selected ROCm WSL configuration and a compatible AMD Adrenalin WSL driver. For NVIDIA, an RTX/GeForce GPU whose existing Windows driver exposes CUDA to WSL2. ALFRED never installs an NVIDIA driver.
 - Internet access and enough disk space for ROCm, build outputs, and model files. The Qwen3.6 27B Q4_K_M model is approximately 20 GB.
@@ -174,11 +174,11 @@ The Windows-side read-only audit is available from PowerShell (firewall query pe
 
     .\scripts\alfred.ps1 -Stage audit-network
 
-It reports WSL version/status and distributions, the `.wslconfig` file and SHA256, WSL policy registry indicators, registered Hyper-V VM creators, WSL Hyper-V VM settings from ActiveStore and PersistentStore, active Hyper-V profiles, and WSL-specific Hyper-V firewall rules. It also reports whether the Windows build meets Microsoft's documented Windows 11 22H2 minimum for WSL `networkingMode` and Hyper-V firewall support. Windows 10 (including build 19045) does not meet that minimum; ALFRED must not rely on `networkingMode=none` or Hyper-V firewall controls there. It does not change files, registry values, firewall policy, or WSL state. Query failures are reported as warnings rather than treated as proof that a control is absent.
+It reports WSL version/status and distributions, the `.wslconfig` file and SHA256, WSL policy registry indicators, registered Hyper-V VM creators, WSL Hyper-V VM settings from ActiveStore and PersistentStore, active Hyper-V profiles, and WSL-specific Hyper-V firewall rules. It reports which Hyper-V firewall query cmdlets are available on the current Windows installation. These cmdlets and WSL `networkingMode=none` are documented for Windows 11 22H2 and later; their absence on Windows 10 is expected and does not make Windows 10 unusable for ALFRED. It does not change files, registry values, firewall policy, or WSL state. Query failures are reported as warnings rather than treated as proof that a control is absent.
 
 The audit is inventory only: `.wslconfig` contents do not prove the effective runtime mode, registry inspection cannot prove that all GPO/MDM policy is absent, and rule/profile output still requires review for explicit allow rules and policy merges. It does not test packet reachability or prove an air gap.
 
-Offline/online mode switching is not implemented. Do not assume that this check enables isolation or changes firewall settings. A successful Linux-side result is only a runtime check, not a formal air gap or protection against a privileged/compromised Windows host. Do not infer isolation from a failed ping or a refused connection to a closed port.
+Offline/online mode switching is not implemented. Do not assume that this check enables isolation or changes firewall settings. Windows 10 remains a supported ALFRED host for WSL setup and compute workloads. The Windows 11 `networkingMode=none` and Hyper-V firewall approach cannot be assumed on Windows 10; a separate Windows 10 host-network isolation path must be implemented and tested before ALFRED can claim offline isolation there. A successful Linux-side result is only a runtime check, not a formal air gap or protection against a privileged/compromised Windows host. Do not infer isolation from a failed ping or a refused connection to a closed port.
 
 ## NVIDIA CUDA on WSL2
 
