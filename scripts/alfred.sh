@@ -193,7 +193,7 @@ install_rocm() {
 
 prepare_llama() {
     require_wsl_user
-    local use_local_models="${USE_LOCAL_MODELS:-0}"
+    local use_local_models="${USE_SUPPLIED_MODELS:-0}"
     log "Installing llama.cpp build dependencies."
     sudo apt-get update
     sudo apt-get install -y build-essential cmake ninja-build git pkg-config libcurl4-openssl-dev \
@@ -213,7 +213,7 @@ prepare_llama() {
     [[ "$(git -C "$LLAMA_DIR" rev-parse HEAD)" == "$LLAMA_PIN" ]] || die "llama.cpp commit pin verification failed."
 
     if [[ "$use_local_models" == "1" || "$use_local_models" == "true" || "$use_local_models" == "yes" ]]; then
-        [[ -f "$PRODUCTION_MODEL_DIR/Qwen3.6-27B-Q4_K_M.gguf" ]] || die "Local production model missing: $PRODUCTION_MODEL_DIR/Qwen3.6-27B-Q4_K_M.gguf. Copy the GGUF into the documented directory, then rerun with -UseLocalModels."
+        [[ -f "$PRODUCTION_MODEL_DIR/Qwen3.6-27B-Q4_K_M.gguf" ]] || die "Local production model missing: $PRODUCTION_MODEL_DIR/Qwen3.6-27B-Q4_K_M.gguf. Copy the GGUF into the documented directory, then rerun with -UseSuppliedModels."
         if [[ -f "$VALIDATION_MODEL" ]]; then
             log "Found the optional local validation model: $VALIDATION_MODEL"
         else
