@@ -174,7 +174,7 @@ The Windows-side read-only audit is available from PowerShell (firewall query pe
 
     .\scripts\alfred.ps1 -Stage audit-network
 
-It reports WSL version/status and distributions, the `.wslconfig` file and SHA256, WSL policy registry indicators, registered Hyper-V VM creators, WSL Hyper-V VM settings from ActiveStore and PersistentStore, active Hyper-V profiles, and WSL-specific Hyper-V firewall rules. It does not change files, registry values, firewall policy, or WSL state. Query failures are reported as warnings rather than treated as proof that a control is absent.
+It reports WSL version/status and distributions, the `.wslconfig` file and SHA256, WSL policy registry indicators, registered Hyper-V VM creators, WSL Hyper-V VM settings from ActiveStore and PersistentStore, active Hyper-V profiles, and WSL-specific Hyper-V firewall rules. It also reports whether the Windows build meets Microsoft's documented Windows 11 22H2 minimum for WSL `networkingMode` and Hyper-V firewall support. Windows 10 (including build 19045) does not meet that minimum; ALFRED must not rely on `networkingMode=none` or Hyper-V firewall controls there. It does not change files, registry values, firewall policy, or WSL state. Query failures are reported as warnings rather than treated as proof that a control is absent.
 
 The audit is inventory only: `.wslconfig` contents do not prove the effective runtime mode, registry inspection cannot prove that all GPO/MDM policy is absent, and rule/profile output still requires review for explicit allow rules and policy merges. It does not test packet reachability or prove an air gap.
 
