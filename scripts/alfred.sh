@@ -138,7 +138,7 @@ install_cuda() {
     if [[ "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "1" || "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "true" || "${USE_SUPPLIED_INSTALL_CUDA_TOOLKIT:-0}" == "yes" ]]; then
         local -a local_repo_debs=("$SUPPLIED_DIR"/cuda-repo-ubuntu2404-*-local_*.deb)
         [[ -f "${local_repo_debs[0]}" ]] || die "Supplied CUDA local-repository installer not found. Put NVIDIA's cuda-repo-ubuntu2404-*-local_*.deb file in $SUPPLIED_DIR."
-        (("${#local_repo_debs[@]}" != 1)) && die "Expected exactly one supplied CUDA local-repository .deb in $SUPPLIED_DIR; found ${#local_repo_debs[@]}."
+        if (("${#local_repo_debs[@]}" != 1)); then die "Expected exactly one supplied CUDA local-repository .deb in $SUPPLIED_DIR; found ${#local_repo_debs[@]}."; fi
         log "Installing supplied CUDA repository package: ${local_repo_debs[0]}"
         sudo dpkg -i "${local_repo_debs[0]}" || die "Could not install the supplied CUDA local-repository .deb. Check that it is for Ubuntu 24.04 x86_64."
         local repo_list
@@ -146,8 +146,11 @@ install_cuda() {
         [[ -n "$repo_list" ]] || die "The supplied CUDA repository package did not install an APT source list under /var."
         log "Refreshing package metadata from the supplied local CUDA repository only."
         sudo apt-get update -o Dir::Etc::sourcelist="$repo_list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
-        local candidate
-        candidate="$(apt-cache policy "$package" | awk '/Candidate:/ {print $2; exit}')"
+        local candidate policy repo_dir
+        policy="$(apt-cache policy "$package")"
+        repo_dir="$(dirname "$repo_list")"
+        grep -Fq "$repo_dir" <<<"$policy" || die "APT does not see $package in the supplied local CUDA repository at $repo_dir."
+        candidate="$(awk '/Candidate:/ {print $2; exit}' <<<"$policy")"
         [[ -n "$candidate" && "$candidate" != "(none)" ]] || die "The supplied CUDA repository does not contain $package. Supply a local-repository installer containing a toolkit compatible with driver $driver."
         log "Installing $package from local media only; APT downloads are disabled."
         sudo apt-get install --no-download -y "$package"
