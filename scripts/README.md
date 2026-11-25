@@ -144,7 +144,7 @@ On the offline Work PC, run:
 
     .\scripts\alfred.ps1 -Stage install-cuda -UseSuppliedInstallCUDAToolkit
 
-ALFRED installs the WSL local-repository package, enrolls the bundled GPG keyring, installs the bundled pin file, refreshes APT metadata from that local repository only, and simulates the toolkit transaction with the supplied dependency .debs. It rejects recognised NVIDIA driver packages before attempting installation. The final install uses `--no-download` and the supplied .debs; it does not contact Ubuntu or NVIDIA repositories. If the staged dependency set is incomplete or incompatible, APT must fail rather than download missing packages. ALFRED never installs a Linux NVIDIA display driver or changes the Windows host driver.
+ALFRED installs the WSL local-repository package, enrolls the bundled GPG keyring, installs the bundled pin file, refreshes APT metadata from that local repository only, and prints the simulated toolkit transaction using the supplied dependency .debs. It rejects recognised NVIDIA driver and kernel-module packages. It then asks for explicit confirmation before installation. Review the complete `Inst` list and answer `y` only if it contains toolkit/runtime development components and no driver packages. The final install uses `--no-download` and the supplied .debs; it does not contact Ubuntu or NVIDIA repositories. If the staged dependency set is incomplete or incompatible, APT must fail rather than download missing packages. ALFRED never installs a Linux NVIDIA display driver or changes the Windows host driver.
 
 **Ubuntu build dependencies — `-UseSuppliedInstallUbuntuBuildDependencies`**
 
