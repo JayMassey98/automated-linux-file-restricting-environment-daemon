@@ -164,7 +164,8 @@ function Invoke-NetworkPreflight {
     )
     foreach ($entry in $wslEntries) {
         try {
-            $output=(& wsl.exe @($entry.Args) 2>&1 | Out-String).Trim()
+            $arguments=$entry.Args
+            $output=(& wsl.exe @arguments 2>&1 | Out-String).Trim()
             $exitCode=$LASTEXITCODE
             if ($exitCode -ne 0) { throw ("wsl.exe exit " + $exitCode + ": " + $output) }
             if ($entry.Name -eq "WSL distributions") {
