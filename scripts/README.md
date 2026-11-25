@@ -46,7 +46,7 @@ Run these from Windows PowerShell in the repository root:
 - .\scripts\alfred.ps1 -Stage configure — write /etc/wsl.conf; then run wsl --shutdown manually.
 - .\scripts\alfred.ps1 -Stage detect — report WSL GPU visibility and installed HIP/CUDA toolchains.
 - .\scripts\alfred.ps1 -Stage verify — validate the WSL environment.
-- `.\\scripts\\alfred.ps1 -Stage audit-network` — read-only Windows/WSL networking and Hyper-V firewall inventory; it changes nothing.
+- `.\scripts\alfred.ps1 -Stage audit-network` — read-only Windows/WSL networking and Hyper-V firewall inventory; it changes nothing.
 - .\scripts\alfred.ps1 -Stage install — install ROCm 7.14 and ROCDXG/AMD SMI.
 - .\scripts\alfred.ps1 -Stage install-cuda — install a driver-compatible CUDA toolkit only; it never installs or changes an NVIDIA driver.
 - .\scripts\alfred.ps1 -Stage prepare — install tools, pin llama.cpp and download models.
@@ -172,7 +172,7 @@ It checks that Linux has no non-loopback IP addresses and no IPv4 or IPv6 defaul
 
 The Windows-side read-only audit is available from PowerShell (firewall query permissions may vary):
 
-    .\\scripts\\alfred.ps1 -Stage audit-network
+    .\scripts\alfred.ps1 -Stage audit-network
 
 It reports WSL version/status and distributions, the `.wslconfig` file and SHA256, WSL policy registry indicators, registered Hyper-V VM creators, WSL Hyper-V VM settings from ActiveStore and PersistentStore, active Hyper-V profiles, and WSL-specific Hyper-V firewall rules. It does not change files, registry values, firewall policy, or WSL state. Query failures are reported as warnings rather than treated as proof that a control is absent.
 
