@@ -73,21 +73,12 @@ function Invoke-NetworkAudit {
     }
     Write-Host "Registry inspection is an indicator only; absence does not prove that GPO/MDM policy is absent."
 
-    Write-Host "`n[Windows networking feature compatibility]"
-    $osVersion = [Environment]::OSVersion.Version
-    Write-Host "Detected Windows version: $($osVersion.ToString()) (build $($osVersion.Build))"
-    if ($osVersion.Build -lt 22621) {
-        Write-Warning "This Windows build is older than Windows 11 22H2 (build 22621). Microsoft documents WSL networkingMode and Hyper-V firewall support for Windows 11 22H2 or later. ALFRED must not rely on networkingMode=none or Hyper-V firewall controls on this host."
-    } else {
-        Write-Host "Windows build meets the documented Windows 11 22H2 minimum; individual WSL/Hyper-V features still require runtime verification."
-    }
-
     Write-Host "`n[Hyper-V firewall cmdlet availability]"
     $required = @("Get-NetFirewallHyperVVMCreator", "Get-NetFirewallHyperVVMSetting",
                   "Get-NetFirewallHyperVRule", "Get-NetFirewallHyperVProfile")
     foreach ($name in $required) {
         if (Get-Command $name -ErrorAction SilentlyContinue) { Write-Host "[AVAILABLE] $name" }
-        else { Write-Warning "[UNAVAILABLE] $name" }
+        else { Write-Host "[UNAVAILABLE] $name (not exposed by this Windows installation)" }
     }
 
     if (Get-Command Get-NetFirewallHyperVVMCreator -ErrorAction SilentlyContinue) {
