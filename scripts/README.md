@@ -19,6 +19,8 @@ Install the AMD Windows driver manually from the release appropriate for your GP
 
 ## Recommended one-command AMD setup
 
+**This end-to-end `all` stage is ROCm-oriented. Do not run it on an NVIDIA-only work PC:** it installs the AMD ROCm stack. Use the CUDA-specific sequence below instead.
+
 Open PowerShell as Administrator in the repository root and run:
 
     .\scripts\alfred.ps1 -Stage all
@@ -76,7 +78,7 @@ CUDA is an optional backend for machines whose existing Windows NVIDIA driver ex
 
     .\scripts\alfred.ps1 -Stage detect
 
-For a CUDA-capable NVIDIA work PC, install the toolkit and build:
+For a CUDA-capable NVIDIA work PC, use this sequence:
 
     .\scripts\alfred.ps1 -Stage install-cuda
     .\scripts\alfred.ps1 -Stage prepare
