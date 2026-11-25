@@ -26,7 +26,8 @@ assert_toolkit_only_apt_plan() {
     local package="$1" plan line planned
     shift
     plan="$(sudo apt-get install --simulate --no-install-recommends "$@" "$package" 2>&1)" || die "APT could not simulate the $package installation. No toolkit installation was attempted. Review the package sources and dependencies."
-    log "Reviewing the proposed APT transaction for $package (simulation only)."
+    log "Proposed APT transaction for $package (simulation only):"
+    printf '%s\n' "$plan"
     while IFS= read -r line; do
         [[ "$line" =~ ^Inst[[:space:]]+([^[:space:]]+) ]] || continue
         planned="${BASH_REMATCH[1]}"
@@ -35,6 +36,9 @@ assert_toolkit_only_apt_plan() {
         fi
     done <<< "$plan"
     log "APT simulation contains no recognised NVIDIA driver packages."
+    local answer
+    if ! read -r -p "Proceed with this CUDA Toolkit installation? [y/N] " answer; then answer=""; fi
+    [[ "$answer" =~ ^[Yy]$ ]] || die "Installation was not approved. No CUDA Toolkit packages were installed."
 }
 
 detect_hardware() {
