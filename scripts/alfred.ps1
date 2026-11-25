@@ -5,7 +5,8 @@ param(
     [string]$Distro = "Ubuntu-24.04",
     [switch]$UseSuppliedModels,
     [switch]$UseSuppliedInstallLlama,
-    [switch]$UseSuppliedInstallCUDAToolkit
+    [switch]$UseSuppliedInstallCUDAToolkit,
+    [switch]$UseSuppliedInstallUbuntuBuildDependencies
 )
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -57,6 +58,7 @@ function Invoke-LinuxStage([string]$LinuxStage) {
     if ($LinuxStage -eq "prepare" -or $LinuxStage -eq "all") {
         if ($UseSuppliedModels) { $suppliedModes += "USE_SUPPLIED_MODELS=1" }
         if ($UseSuppliedInstallLlama) { $suppliedModes += "USE_SUPPLIED_INSTALL_LLAMA=1" }
+        if ($UseSuppliedInstallUbuntuBuildDependencies) { $suppliedModes += "USE_SUPPLIED_INSTALL_UBUNTU_BUILD_DEPENDENCIES=1" }
     }
     if ($LinuxStage -eq "install-cuda" -and $UseSuppliedInstallCUDAToolkit) { $suppliedModes += "USE_SUPPLIED_INSTALL_CUDA_TOOLKIT=1" }
     $modePrefix = if ($suppliedModes.Count -gt 0) { ($suppliedModes -join " ") + " " } else { "" }
@@ -67,6 +69,7 @@ function Invoke-LinuxStage([string]$LinuxStage) {
 if ($UseSuppliedModels -and $Stage -ne "prepare" -and $Stage -ne "all") { throw "-UseSuppliedModels is supported with -Stage prepare or -Stage all only." }
 if ($UseSuppliedInstallLlama -and $Stage -ne "prepare" -and $Stage -ne "all") { throw "-UseSuppliedInstallLlama is supported with -Stage prepare or -Stage all only." }
 if ($UseSuppliedInstallCUDAToolkit -and $Stage -ne "install-cuda") { throw "-UseSuppliedInstallCUDAToolkit is supported with -Stage install-cuda only." }
+if ($UseSuppliedInstallUbuntuBuildDependencies -and $Stage -ne "prepare" -and $Stage -ne "all") { throw "-UseSuppliedInstallUbuntuBuildDependencies is supported with -Stage prepare or -Stage all only." }
 switch ($Stage) {
     "host" { Invoke-HostSetup }
     "configure" {
