@@ -277,8 +277,13 @@ build_backends() {
         log "Running a short CPU smoke test with the validation model."
         "$LLAMA_DIR/build-cpu/bin/llama-cli" -m "$VALIDATION_MODEL" \
             -p "Reply with the word OK." -n 8 -ngl 0
+        if [[ -x "$LLAMA_DIR/build-cuda/bin/llama-cli" ]] && smi="$(nvidia_smi_path)" && "$smi" -L >/dev/null 2>&1; then
+            log "Running a short CUDA inference smoke test."
+            "$LLAMA_DIR/build-cuda/bin/llama-cli" -m "$VALIDATION_MODEL" \
+                -p "Reply with the word OK." -n 8 -ngl 99
+        fi
     else
-        log "Validation model not found; skipping CPU smoke test."
+        log "Validation model not found; skipping inference smoke tests."
     fi
     log "Available CPU, Vulkan, HIP and CUDA builds completed."
 }
