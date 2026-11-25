@@ -102,17 +102,47 @@ Copy `llama.cpp.bundle` into `~/alfred-supplied/`, then run:
 
 ALFRED clones from the local bundle and verifies that the exact pinned commit is present before checking it out. This avoids relying on a possibly newer source snapshot and keeps the build reproducible.
 
-**CUDA Toolkit — `-UseSuppliedInstallCUDAToolkit`**
+**CUDA Toolkit — `-UseSuppliedInstallCUDAToolkit` (NVIDIA WSL repository)**
 
-Download NVIDIA's **Ubuntu 24.04 x86_64 local-repository installer** on a machine with internet access. It is the large `cuda-repo-ubuntu2404-*-local_*.deb` package (not the small network-repository keyring package). Copy exactly one such file into:
+For WSL, use NVIDIA's **WSL-Ubuntu repository**, not the ordinary `ubuntu2404` repository. NVIDIA's CUDA 12.8 installation guide has a separate WSL local-repository procedure and requires enrolling the repository's GPG keyring. ALFRED follows that WSL-specific path.
+
+For the current managed NVIDIA workstation (Ubuntu 24.04.5 amd64, WSL-visible driver 573.76), ALFRED selects `cuda-toolkit-12-8`. On an internet-connected **Ubuntu 24.04.5 amd64 staging environment with a clean base matching the target**, prepare these files:
+
+1. From the NVIDIA CUDA 12.8 archive, select **WSL-Ubuntu**, **x86_64**, **12.8.0**, **deb (local)** and download the local repository installer named:
+
+       cuda-repo-wsl-ubuntu-12-8-local_12.8.0-1_amd64.deb
+
+2. Download NVIDIA's WSL repository pin file:
+
+       https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-wsl-ubuntu.pin
+
+3. Install the local repository on the connected staging environment, enroll its keyring and pin file, then download the complete APT dependency set:
+
+       mkdir -p ~/alfred-cuda-staging/cuda-deps
+       cd ~/alfred-cuda-staging
+       sudo dpkg -i cuda-repo-wsl-ubuntu-12-8-local_12.8.0-1_amd64.deb
+       sudo cp /var/cuda-repo-wsl-ubuntu-12-8-local/cuda-*-keyring.gpg /usr/share/keyrings/
+       sudo install -D -m 0644 cuda-wsl-ubuntu.pin /etc/apt/preferences.d/cuda-repository-pin-600
+       sudo apt-get update
+       sudo apt-get install --download-only --no-install-recommends cuda-toolkit-12-8
+       sudo cp /var/cache/apt/archives/*.deb ~/alfred-cuda-staging/cuda-deps/
+       sudo chown -R "$USER":"$USER" ~/alfred-cuda-staging
+
+The staging environment must match the target Ubuntu release/architecture and should be a clean base with no additional development or CUDA packages preinstalled; APT does not download packages it already considers installed. If the staging environment is more fully provisioned than the target, its download cache may omit dependencies the target needs.
+
+Transfer the following into the target WSL user's `~/alfred-supplied/` directory, preserving the directory structure:
 
     ~/alfred-supplied/
+      cuda-repo-wsl-ubuntu-12-8-local_12.8.0-1_amd64.deb
+      cuda-wsl-ubuntu.pin
+      cuda-deps/
+        (all downloaded .deb dependency files)
 
-Then run:
+On the offline Work PC, run:
 
     .\scripts\alfred.ps1 -Stage install-cuda -UseSuppliedInstallCUDAToolkit
 
-ALFRED installs that local repository package, refreshes APT metadata from the local repository only, and installs the driver-compatible `cuda-toolkit-X-Y` package with APT downloads disabled. It will not install a Linux NVIDIA driver. The local repository must contain the toolkit version selected for the Windows host driver, and any OS-level dependencies not included in the local repository must already be installed/cached. If they are missing, installation fails rather than reaching out to the internet.
+ALFRED installs the WSL local-repository package, enrolls the bundled GPG keyring, installs the bundled pin file, refreshes APT metadata from that local repository only, and simulates the toolkit transaction with the supplied dependency .debs. It rejects recognised NVIDIA driver packages before attempting installation. The final install uses `--no-download` and the supplied .debs; it does not contact Ubuntu or NVIDIA repositories. If the staged dependency set is incomplete or incompatible, APT must fail rather than download missing packages. ALFRED never installs a Linux NVIDIA display driver or changes the Windows host driver.
 
 **Ubuntu build dependencies — `-UseSuppliedInstallUbuntuBuildDependencies`**
 
