@@ -213,13 +213,31 @@ install_rocm() {
     log "ROCm 7.14 and ROCDXG package installation completed."
 }
 
+install_build_dependencies() {
+    local -a packages=(build-essential cmake ninja-build git pkg-config libcurl4-openssl-dev
+        libvulkan-dev mesa-vulkan-drivers vulkan-tools glslc)
+    local use_local_models="${USE_SUPPLIED_MODELS:-0}"
+    if [[ "$use_local_models" != "1" && "$use_local_models" != "true" && "$use_local_models" != "yes" ]]; then
+        packages+=(pipx python3-venv)
+    fi
+
+    if [[ "${USE_SUPPLIED_INSTALL_UBUNTU_BUILD_DEPENDENCIES:-0}" == "1" || "${USE_SUPPLIED_INSTALL_UBUNTU_BUILD_DEPENDENCIES:-0}" == "true" || "${USE_SUPPLIED_INSTALL_UBUNTU_BUILD_DEPENDENCIES:-0}" == "yes" ]]; then
+        local deb_dir="$SUPPLIED_DIR/ubuntu-build-deps"
+        local -a supplied_debs=("$deb_dir"/*.deb)
+        (("${#supplied_debs[@]}" > 0)) || die "No supplied Ubuntu build-dependency .deb files found in $deb_dir. Stage the complete package set there and retry."
+        log "Installing Ubuntu build dependencies from ${#supplied_debs[@]} supplied .deb files. Network downloads are disabled."
+        sudo apt-get install --no-download -y "${supplied_debs[@]}" || die "Supplied Ubuntu build dependencies are incomplete or incompatible. Prepare the bundle on a clean Ubuntu 24.04 amd64 system and include all downloaded dependency .deb files."
+    else
+        log "Installing llama.cpp build dependencies from Ubuntu repositories."
+        sudo apt-get update
+        sudo apt-get install -y "${packages[@]}"
+    fi
+}
+
 prepare_llama() {
     require_wsl_user
     local use_local_models="${USE_SUPPLIED_MODELS:-0}"
-    log "Installing llama.cpp build dependencies."
-    sudo apt-get update
-    sudo apt-get install -y build-essential cmake ninja-build git pkg-config libcurl4-openssl-dev \
-        libvulkan-dev mesa-vulkan-drivers vulkan-tools glslc
+    install_build_dependencies
     mkdir -p "$(dirname "$LLAMA_DIR")" "$MODEL_DIR"
 
     if [[ "${USE_SUPPLIED_INSTALL_LLAMA:-0}" == "1" || "${USE_SUPPLIED_INSTALL_LLAMA:-0}" == "true" || "${USE_SUPPLIED_INSTALL_LLAMA:-0}" == "yes" ]]; then
@@ -258,7 +276,6 @@ prepare_llama() {
         log "Using pre-downloaded local GGUF files. No Hugging Face model downloads will be attempted."
     else
         log "Installing Hugging Face CLI and downloading models."
-        sudo apt-get install -y pipx python3-venv
         export PATH="$HOME/.local/bin:$PATH"
         if ! command -v hf >/dev/null 2>&1; then
             pipx install huggingface_hub
