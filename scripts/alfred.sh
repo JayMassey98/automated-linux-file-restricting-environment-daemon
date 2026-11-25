@@ -112,6 +112,45 @@ verify_environment() {
     log "WSL environment checks passed."
 }
 
+
+install_cuda() {
+    require_wsl_user
+    [[ -e /dev/dxg ]] || die "WSL GPU device /dev/dxg is missing. Check WSL2 and the existing Windows NVIDIA driver."
+    local smi driver package tmpdir
+    smi="$(nvidia_smi_path)" || die "nvidia-smi is unavailable in WSL. ALFRED will not install a Linux NVIDIA driver."
+    "$smi" -L >/dev/null 2>&1 || die "The Windows NVIDIA driver is not exposing a usable GPU to WSL."
+    driver="$("$smi" --query-gpu=driver_version --format=csv,noheader | head -n 1 | tr -d '[:space:]')"
+    [[ "$driver" =~ ^[0-9]+\.[0-9]+ ]] || die "Could not parse NVIDIA driver version: $driver"
+    log "Detected Windows NVIDIA driver $driver through WSL."
+    if [[ "$(printf '%s\\n' "$driver" "576.57" | sort -V | head -n1)" == "576.57" ]]; then
+        package="cuda-toolkit-12-9"
+    elif [[ "$(printf '%s\\n' "$driver" "570.26" | sort -V | head -n1)" == "570.26" ]]; then
+        package="cuda-toolkit-12-8"
+    elif [[ "$(printf '%s\\n' "$driver" "560.76" | sort -V | head -n1)" == "560.76" ]]; then
+        package="cuda-toolkit-12-6"
+    elif [[ "$(printf '%s\\n' "$driver" "551.61" | sort -V | head -n1)" == "551.61" ]]; then
+        package="cuda-toolkit-12-4"
+    else
+        die "Driver $driver is below ALFRED's supported automatic toolkit floor. No driver update will be attempted; contact IT or use CPU/Vulkan."
+    fi
+    log "Installing $package only. No Linux NVIDIA driver package will be installed."
+    sudo apt-get update
+    sudo apt-get install -y ca-certificates wget
+    tmpdir="$(mktemp -d)"
+    wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb -O "$tmpdir/cuda-keyring.deb"
+    sudo dpkg -i "$tmpdir/cuda-keyring.deb"
+    rm -rf "$tmpdir"
+    sudo apt-get update
+    sudo apt-get install -y "$package"
+    for cuda_bin in /usr/local/cuda/bin /usr/local/cuda-*/bin; do
+        if [[ -x "$cuda_bin/nvcc" ]]; then export PATH="$cuda_bin:$PATH"; break; fi
+    done
+    command -v nvcc >/dev/null || die "CUDA toolkit installed but nvcc is not on PATH."
+    nvcc --version
+    "$smi" -L
+    log "CUDA toolkit ready. Windows host driver was not modified."
+}
+
 install_rocm() {
     require_wsl_user
     log "Installing ROCm 7.14 Core SDK and documented WSL ROCDXG packages."
