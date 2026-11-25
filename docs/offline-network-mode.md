@@ -1,6 +1,6 @@
 # ALFRED online/offline network mode design
 
-**Status: partial implementation.** Read-only Linux and Windows verification is implemented as -Stage verify-network. The commands that change networking modes (offline and online) are not implemented yet.
+**Status: design only, with Linux runtime check available.** The Windows PowerShell verification wrapper was found to contain malformed code and has been removed pending repair. The commands that change networking modes (offline and online) are not implemented.
 
 ALFRED needs two explicit operating modes:
 
@@ -17,7 +17,7 @@ The proposed Windows PowerShell interface is:
 .\scripts\alfred.ps1 -Stage online
 \`\`\`
 
-Only verify-network is implemented. The offline and online commands are still proposed interfaces; do not use them until a tested implementation is merged.
+No PowerShell offline, online, or verify-network stage is currently implemented. The Linux-only command `bash scripts/alfred.sh verify-network` checks interface addresses and routes; it does not verify Windows policy or effective host networking controls. Do not use the proposed PowerShell commands until a tested implementation is merged.
 
 ## Enforcement design
 
@@ -38,7 +38,7 @@ Only verify-network is implemented. The offline and online commands are still pr
 
 ## Implemented verification checks
 
-The read-only verifier checks the explicit .wslconfig networking mode, active WSL Hyper-V firewall settings, enabled WSL Hyper-V allow rules, non-loopback Linux IP addresses, and IPv4/IPv6 default routes. It does not change settings. The Linux verifier can be run directly with bash scripts/alfred.sh verify-network; the PowerShell wrapper additionally checks Windows firewall state and requires elevation.
+The currently available Linux-only verifier checks non-loopback Linux IP addresses and IPv4/IPv6 default routes. It does not inspect `.wslconfig`, Windows firewall policy, Hyper-V allow rules, or whether Windows has effectively disconnected WSL. A previous PowerShell verifier was malformed and has been removed pending a safe replacement. No settings are changed.
 
 These checks are necessary but not sufficient to prove an absolute air gap. In particular, they do not protect against a privileged or compromised Windows host, nor do they establish that employer policy permits the configuration.
 
