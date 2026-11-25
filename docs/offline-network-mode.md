@@ -20,7 +20,7 @@ The proposed Windows PowerShell interface is:
 No PowerShell offline, online, or `verify-network` stage is currently implemented. A read-only PowerShell inventory is available:
 
 ```powershell
-.\\scripts\\alfred.ps1 -Stage audit-network
+.\scripts\alfred.ps1 -Stage audit-network
 ```
 
 It reports `.wslconfig` existence, contents and SHA256; WSL version/status and registered distributions; WSL policy registry indicators; the WSL Hyper-V VM settings in ActiveStore and PersistentStore; active Hyper-V firewall profiles; and WSL-specific Hyper-V rules. It does not mutate the host. Query failures are warnings, not evidence that a setting or policy is absent. This is an inventory aid, not a verification verdict.
