@@ -22,6 +22,20 @@ nvidia_smi_path() {
     fi
 }
 
+assert_toolkit_only_apt_plan() {
+    local package="$1" plan line planned
+    plan="$(sudo apt-get install --simulate --no-install-recommends "$package" 2>&1)"         || die "APT could not simulate the $package installation. No toolkit installation was attempted. Review the package sources and dependencies."
+    log "Reviewing the proposed APT transaction for $package (simulation only)."
+    while IFS= read -r line; do
+        [[ "$line" =~ ^Inst[[:space:]]+([^[:space:]]+) ]] || continue
+        planned="${BASH_REMATCH[1]}"
+        if [[ "$planned" =~ ^(cuda-drivers($|-)|nvidia-(open($|-)|driver($|-)|dkms($|-)|kernel($|-)|modprobe($|-)|utils($|-)|compute-utils($|-)|headless($|-)|firmware($|-))|libnvidia-) ]]; then
+            die "APT's proposed transaction includes driver-related package '$planned'. ALFRED will not install or alter NVIDIA drivers on this WSL host. No toolkit installation was attempted."
+        fi
+    done <<< "$plan"
+    log "APT simulation contains no recognised NVIDIA driver packages."
+}
+
 detect_hardware() {
     require_wsl_user
     log "WSL GPU and backend detection"
@@ -192,6 +206,7 @@ install_cuda() {
         grep -Fq "$repo_dir" <<<"$policy" || die "APT does not see $package in the supplied local CUDA repository at $repo_dir."
         candidate="$(awk '/Candidate:/ {print $2; exit}' <<<"$policy")"
         [[ -n "$candidate" && "$candidate" != "(none)" ]] || die "The supplied CUDA repository does not contain $package. Supply a local-repository installer containing a toolkit compatible with driver $driver."
+        assert_toolkit_only_apt_plan "$package"
         log "Installing $package from local media only; APT downloads are disabled."
         sudo apt-get install --no-download -y "$package"
     else
@@ -202,6 +217,7 @@ install_cuda() {
         sudo dpkg -i "$tmpdir/cuda-keyring.deb"
         rm -rf "$tmpdir"
         sudo apt-get update
+        assert_toolkit_only_apt_plan "$package"
         sudo apt-get install -y "$package"
     fi
     for cuda_bin in /usr/local/cuda/bin /usr/local/cuda-*/bin; do
