@@ -163,22 +163,15 @@ This intentionally disables /mnt/c automount and Windows executable interop for 
 
 ### Read-only offline network verification
 
-ALFRED now includes a read-only verification stage:
-
-    .\scripts\alfred.ps1 -Stage verify-network
-
-Run it from an elevated PowerShell window after an administrator has configured WSL offline networking. It checks that:
-
-- The user's .wslconfig explicitly sets [wsl2] networkingMode=none.
-- The active WSL Hyper-V firewall is enabled, with inbound and outbound defaults set to Block and host/guest loopback disabled.
-- No enabled Hyper-V allow rules are present for the WSL VM creator.
-- Linux reports no non-loopback IP addresses and no IPv4 or IPv6 default route.
-
-The Linux-side check is also available directly inside WSL:
+The Linux-side network check is available inside WSL:
 
     bash scripts/alfred.sh verify-network
 
-**This stage only verifies; it does not enable offline mode or change firewall settings.** It requires iproute2 inside Ubuntu and elevated PowerShell for the Windows firewall checks. A successful result is a configuration/runtime check, not a formal air gap or protection against a privileged/compromised Windows host. Do not infer isolation from a failed ping or a refused connection to a closed port.
+It checks that Linux has no non-loopback IP addresses and no IPv4 or IPv6 default route. It requires iproute2.
+
+**Important:** the Windows PowerShell `-Stage verify-network` wrapper is temporarily unavailable while its previous implementation is being repaired and revalidated. Do not use that command. The Linux check alone does not verify Windows policy, the effective WSL networking mode, Hyper-V firewall rules, or prove an air gap.
+
+Offline/online mode switching is not implemented. Do not assume that this check enables isolation or changes firewall settings. A successful Linux-side result is only a runtime check, not a formal air gap or protection against a privileged/compromised Windows host. Do not infer isolation from a failed ping or a refused connection to a closed port.
 
 ## NVIDIA CUDA on WSL2
 
