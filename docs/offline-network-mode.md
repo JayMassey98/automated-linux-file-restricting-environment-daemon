@@ -1,6 +1,6 @@
 # ALFRED online/offline network mode design
 
-**Status: design only, with Linux runtime check available.** The Windows PowerShell verification wrapper was found to contain malformed code and has been removed pending repair. The commands that change networking modes (offline and online) are not implemented.
+**Status: design only, with Linux runtime check and read-only Windows audit available.** The commands that change networking modes (offline and online) are not implemented.
 
 ALFRED needs two explicit operating modes:
 
@@ -17,7 +17,15 @@ The proposed Windows PowerShell interface is:
 .\scripts\alfred.ps1 -Stage online
 \`\`\`
 
-No PowerShell offline, online, or verify-network stage is currently implemented. The Linux-only command `bash scripts/alfred.sh verify-network` checks interface addresses and routes; it does not verify Windows policy or effective host networking controls. Do not use the proposed PowerShell commands until a tested implementation is merged.
+No PowerShell offline, online, or `verify-network` stage is currently implemented. A read-only PowerShell inventory is available:
+
+```powershell
+.\\scripts\\alfred.ps1 -Stage audit-network
+```
+
+It reports `.wslconfig` existence, contents and SHA256; WSL version/status and registered distributions; WSL policy registry indicators; the WSL Hyper-V VM settings in ActiveStore and PersistentStore; active Hyper-V firewall profiles; and WSL-specific Hyper-V rules. It does not mutate the host. Query failures are warnings, not evidence that a setting or policy is absent. This is an inventory aid, not a verification verdict.
+
+The Linux-only command `bash scripts/alfred.sh verify-network` checks interface addresses and routes; it does not verify Windows policy or effective host networking controls. Do not use the proposed PowerShell offline/online commands until a separately tested implementation is merged.
 
 ## Enforcement design
 
@@ -38,7 +46,7 @@ No PowerShell offline, online, or verify-network stage is currently implemented.
 
 ## Implemented verification checks
 
-The currently available Linux-only verifier checks non-loopback Linux IP addresses and IPv4/IPv6 default routes. It does not inspect `.wslconfig`, Windows firewall policy, Hyper-V allow rules, or whether Windows has effectively disconnected WSL. A previous PowerShell verifier was malformed and has been removed pending a safe replacement. No settings are changed.
+The Linux verifier checks non-loopback Linux IP addresses and IPv4/IPv6 default routes. The PowerShell `audit-network` stage is read-only and inventories `.wslconfig`, WSL policy registry indicators, WSL Hyper-V VM settings, profiles and rules. It does not prove the effective networking mode, infer absence of all enterprise policy, test packet reachability, or decide whether explicit allow rules create a path. Neither check changes settings.
 
 These checks are necessary but not sufficient to prove an absolute air gap. In particular, they do not protect against a privileged or compromised Windows host, nor do they establish that employer policy permits the configuration.
 
