@@ -24,12 +24,12 @@ nvidia_smi_path() {
 
 assert_toolkit_only_apt_plan() {
     local package="$1" plan line planned
-    plan="$(sudo apt-get install --simulate --no-install-recommends "$package" 2>&1)"         || die "APT could not simulate the $package installation. No toolkit installation was attempted. Review the package sources and dependencies."
+    plan="$(sudo apt-get install --simulate --no-install-recommends "$package" 2>&1)" || die "APT could not simulate the $package installation. No toolkit installation was attempted. Review the package sources and dependencies."
     log "Reviewing the proposed APT transaction for $package (simulation only)."
     while IFS= read -r line; do
         [[ "$line" =~ ^Inst[[:space:]]+([^[:space:]]+) ]] || continue
         planned="${BASH_REMATCH[1]}"
-        if [[ "$planned" =~ ^(cuda-drivers($|-)|nvidia-(open($|-)|driver($|-)|dkms($|-)|kernel($|-)|modprobe($|-)|utils($|-)|compute-utils($|-)|headless($|-)|firmware($|-))|libnvidia-) ]]; then
+        if [[ "$planned" =~ ^(cuda-drivers($|-)|nvidia-|libnvidia-) ]]; then
             die "APT's proposed transaction includes driver-related package '$planned'. ALFRED will not install or alter NVIDIA drivers on this WSL host. No toolkit installation was attempted."
         fi
     done <<< "$plan"
