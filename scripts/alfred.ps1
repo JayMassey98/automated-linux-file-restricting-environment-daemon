@@ -137,6 +137,69 @@ function Invoke-NetworkPreflight {
     } catch {}
     Write-Host ("Elevated PowerShell: " + $admin)
 
+    # Read-only Windows-side NVIDIA inventory. This does not require WSL and
+    # never changes, installs, updates, or configures a GPU driver.
+    $nvidiaDriverEvidence=@()
+    try {
+        $signedDrivers=@(Get-CimInstance Win32_PnPSignedDriver -ErrorAction Stop |
+            Where-Object { $_.DeviceClass -eq "DISPLAY" -and ($_.DriverProviderName -match "NVIDIA" -or $_.DeviceName -match "NVIDIA") })
+        foreach ($driver in $signedDrivers) {
+            $nvidiaDriverEvidence+=("Device={0}; Provider={1}; Version={2}; Date={3}; INF={4}" -f $driver.DeviceName,$driver.DriverProviderName,$driver.DriverVersion,$driver.DriverDate,$driver.InfName)
+        }
+        if ($nvidiaDriverEvidence.Count -gt 0) {
+            Add-PreflightResult "NVIDIA Windows driver inventory" "PASS" ($nvidiaDriverEvidence -join " | ")
+        } else {
+            Add-PreflightResult "NVIDIA Windows driver inventory" "UNKNOWN" "No NVIDIA display-driver record returned by Win32_PnPSignedDriver."
+        }
+    } catch {
+        Add-PreflightResult "NVIDIA Windows driver inventory" "UNKNOWN" $_.Exception.Message
+    }
+    try {
+        $video=@(Get-CimInstance Win32_VideoController -ErrorAction Stop |
+            Where-Object { $_.Name -match "NVIDIA" -or $_.AdapterCompatibility -match "NVIDIA" })
+        if ($video.Count -gt 0) {
+            $videoEvidence=@($video | ForEach-Object {
+                "Name=$($_.Name); Adapter=$($_.AdapterCompatibility); DriverVersion=$($_.DriverVersion); Status=$($_.Status); PNPDeviceID=$($_.PNPDeviceID)"
+            })
+            Add-PreflightResult "NVIDIA Windows GPU inventory" "PASS" ($videoEvidence -join " | ")
+        } else {
+            Add-PreflightResult "NVIDIA Windows GPU inventory" "UNKNOWN" "No NVIDIA adapter returned by Win32_VideoController; device may be hidden, virtualised, or unavailable to this query."
+        }
+    } catch {
+        Add-PreflightResult "NVIDIA Windows GPU inventory" "UNKNOWN" $_.Exception.Message
+    }
+    $nvidiaSmiCandidates=@()
+    $programFilesNvidia=Join-Path $env:ProgramFiles "NVIDIA Corporation\NVSMI\nvidia-smi.exe"
+    if (Test-Path -LiteralPath $programFilesNvidia -PathType Leaf) { $nvidiaSmiCandidates+=$programFilesNvidia }
+    if ($env:ProgramW6432) {
+        $wideNvidia=Join-Path $env:ProgramW6432 "NVIDIA Corporation\NVSMI\nvidia-smi.exe"
+        if ((Test-Path -LiteralPath $wideNvidia -PathType Leaf) -and $nvidiaSmiCandidates -notcontains $wideNvidia) { $nvidiaSmiCandidates+=$wideNvidia }
+    }
+    $nvidiaSmiOK=$false
+    foreach ($nvidiaSmi in $nvidiaSmiCandidates) {
+        try {
+            $signature=Get-AuthenticodeSignature -LiteralPath $nvidiaSmi -ErrorAction Stop
+            if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notmatch "NVIDIA") {
+                Add-PreflightResult "NVIDIA Windows nvidia-smi" "UNKNOWN" "Found candidate at $nvidiaSmi but its Authenticode signature was not valid and attributable to NVIDIA; executable was not run."
+                continue
+            }
+            $query=& $nvidiaSmi --query-gpu=name,driver_version,driver_model.current --format=csv,noheader 2>&1
+            $queryExit=$LASTEXITCODE
+            if ($queryExit -ne 0 -or -not $query) {
+                Add-PreflightResult "NVIDIA Windows nvidia-smi" "UNKNOWN" ("Signed NVIDIA utility found, but read-only GPU query failed (exit " + $queryExit + "): " + ($query -join " "))
+                continue
+            }
+            Add-PreflightResult "NVIDIA Windows nvidia-smi" "PASS" ("Path=" + $nvidiaSmi + "; name, driver version, current driver model: " + (($query | ForEach-Object { "$_".Trim() }) -join " | "))
+            $nvidiaSmiOK=$true
+            break
+        } catch {
+            Add-PreflightResult "NVIDIA Windows nvidia-smi" "UNKNOWN" $_.Exception.Message
+        }
+    }
+    if (-not $nvidiaSmiOK -and $nvidiaSmiCandidates.Count -eq 0) {
+        Add-PreflightResult "NVIDIA Windows nvidia-smi" "UNKNOWN" "NVIDIA NVSMI utility not found in the standard Program Files location; no executable was downloaded or installed."
+    }
+
     $build=0
     try {
         $os=Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
