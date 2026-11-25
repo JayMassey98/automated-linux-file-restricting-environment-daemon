@@ -2,6 +2,18 @@
 
 **Status: design only, with Linux runtime check and read-only Windows audit available.** The commands that change networking modes (offline and online) are not implemented.
 
+## Platform support policy
+
+ALFRED's general platform support and its optional network-isolation capability are separate concerns:
+
+- **Windows 10:** supported for normal ALFRED operation, including WSL2 setup, supported GPU compute, model preparation/execution, builds, and online workflows. Windows 10 users do not need to enable host or WSL isolation to use ALFRED.
+- **Windows 11 22H2 and later:** the first target for an ALFRED-managed isolation provider, using documented WSL networking and Hyper-V firewall controls where the installed WSL version and effective policy support them. This provider is still design work; the presence of the underlying Windows controls does not mean ALFRED isolation is implemented.
+- **Windows 10 isolation:** a separate, optional future provider. Its absence is not a blocker for Windows 10 support or ordinary ALFRED releases. Do not emulate Windows 11 controls or weaken host security to create superficial feature parity.
+
+The intended architecture is capability-based: detect the host/WSL capabilities and applicable policy, select a platform-specific provider only when its prerequisites are proven, and apply a common isolation contract and verification suite. A provider must fail closed when a required control cannot be configured or independently verified. Unsupported isolation must be reported as unavailable, without preventing ordinary ALFRED workloads from running in their normal mode. Platform providers must preserve user and enterprise policy, avoid silent firewall changes, and provide exact, tested rollback before any state-changing implementation is accepted.
+
+This policy does not promise a formal air gap. A privileged or compromised Windows host remains outside the protection boundary of guest-level controls.
+
 ALFRED needs two explicit operating modes:
 
 - **Online:** WSL may use the network for approved downloads, updates, model retrieval, and package installation.
@@ -42,7 +54,7 @@ Windows 10 remains a supported ALFRED host for WSL setup, GPU compute, model exe
 
 Microsoft documents the WSL Hyper-V firewall feature and the WSL `networkingMode` setting (including `none`) for Windows 11 22H2 and later, with a sufficiently recent WSL release. These controls must not be assumed to exist on Windows 10. On Windows 10, the audit should report unavailable Hyper-V firewall cmdlets as capability information—not as a verdict that Windows 10 or ALFRED is unsupported.
 
-The enforcement sequence above is therefore the proposed Windows 11 path only.
+The enforcement sequence above is therefore the proposed Windows 11 isolation provider only; it is not implemented yet. Windows 11 isolation is the first implementation target, not a prerequisite for ALFRED's general operation.
 
 ### Windows 10 findings (research; no enforcement implemented)
 
@@ -57,7 +69,7 @@ The Windows 10 path remains an open design item. Viable directions to investigat
 - **A supported host filtering product/driver:** only consider a Windows Filtering Platform (WFP) or equivalent product if its vendor explicitly supports filtering forwarded/NAT traffic from WSL2 on the exact Windows 10 build, and packet-level tests verify IPv4, IPv6, DNS, LAN, host-gateway, VPN, and alternate-adapter paths.
 - **A future ALFRED-managed host-wide disconnect mode:** investigate separately, with explicit operator consent, complete adapter inventory, reversible state capture, drift detection, and tests for Wi-Fi, Ethernet, USB tethering, VPN and virtual adapters. Do not implement this as part of the current per-WSL offline mode.
 
-Until one of these options has a documented enforcement boundary and repeatable tests, ALFRED must report Windows 10 per-WSL offline isolation as **unavailable**, while continuing to support Windows 10 for WSL setup, GPU compute, model execution, and ordinary online/offline staged workflows. If the requirement is a guarantee that the host and WSL cannot communicate with any network, use an employer-approved disconnected environment.
+Until one of these options has a documented enforcement boundary and repeatable tests, ALFRED must report Windows 10 managed per-WSL isolation as **unavailable**. This is an optional future capability, not a limitation on Windows 10's supported everyday ALFRED workflows (WSL setup, GPU compute, model execution, builds, and staged asset use). If the requirement is a guarantee that the host and WSL cannot communicate with any network, use an employer-approved disconnected environment.
 
 ## Scope and limitations
 
