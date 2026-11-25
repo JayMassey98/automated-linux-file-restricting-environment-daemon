@@ -193,17 +193,13 @@ install_rocm() {
 
 prepare_llama() {
     require_wsl_user
-    log "Installing build tools and Hugging Face CLI."
+    local use_local_models="${USE_LOCAL_MODELS:-0}"
+    log "Installing llama.cpp build dependencies."
     sudo apt-get update
     sudo apt-get install -y build-essential cmake ninja-build git pkg-config libcurl4-openssl-dev \
-        libvulkan-dev mesa-vulkan-drivers vulkan-tools glslc pipx python3-venv
-    export PATH="$HOME/.local/bin:$PATH"
-    if ! command -v hf >/dev/null 2>&1; then
-        pipx install huggingface_hub
-        export PATH="$HOME/.local/bin:$PATH"
-    fi
-    command -v hf >/dev/null || die "Hugging Face CLI 'hf' was not found. Add ~/.local/bin to PATH and rerun."
+        libvulkan-dev mesa-vulkan-drivers vulkan-tools glslc
     mkdir -p "$(dirname "$LLAMA_DIR")" "$MODEL_DIR"
+
     if [[ -d "$LLAMA_DIR/.git" ]]; then
         [[ -z "$(git -C "$LLAMA_DIR" status --porcelain)" ]] || die "Existing llama.cpp checkout has local changes: $LLAMA_DIR. Commit or back them up before pinning."
         git -C "$LLAMA_DIR" fetch --depth=1 origin "$LLAMA_PIN"
@@ -215,14 +211,33 @@ prepare_llama() {
     fi
     git -C "$LLAMA_DIR" checkout --detach "$LLAMA_PIN"
     [[ "$(git -C "$LLAMA_DIR" rev-parse HEAD)" == "$LLAMA_PIN" ]] || die "llama.cpp commit pin verification failed."
-    log "Downloading a small CPU validation model."
-    hf download Qwen/Qwen2.5-1.5B-Instruct-GGUF \
-        qwen2.5-1.5b-instruct-q4_k_m.gguf \
-        --local-dir "$MODEL_DIR/Qwen2.5-1.5B-Instruct-GGUF"
-    log "Downloading the Qwen3.6 27B Q4_K_M production model (about 20 GB)."
-    hf download ggml-org/Qwen3.6-27B-GGUF \
-        Qwen3.6-27B-Q4_K_M.gguf \
-        --local-dir "$PRODUCTION_MODEL_DIR"
+
+    if [[ "$use_local_models" == "1" || "$use_local_models" == "true" || "$use_local_models" == "yes" ]]; then
+        [[ -f "$PRODUCTION_MODEL_DIR/Qwen3.6-27B-Q4_K_M.gguf" ]] || die "Local production model missing: $PRODUCTION_MODEL_DIR/Qwen3.6-27B-Q4_K_M.gguf. Copy the GGUF into the documented directory, then rerun with -UseLocalModels."
+        if [[ -f "$VALIDATION_MODEL" ]]; then
+            log "Found the optional local validation model: $VALIDATION_MODEL"
+        else
+            log "Optional validation model not found; build-time inference smoke test will be skipped."
+        fi
+        log "Using pre-downloaded local GGUF files. No Hugging Face model downloads will be attempted."
+    else
+        log "Installing Hugging Face CLI and downloading models."
+        sudo apt-get install -y pipx python3-venv
+        export PATH="$HOME/.local/bin:$PATH"
+        if ! command -v hf >/dev/null 2>&1; then
+            pipx install huggingface_hub
+            export PATH="$HOME/.local/bin:$PATH"
+        fi
+        command -v hf >/dev/null || die "Hugging Face CLI 'hf' was not found. Add ~/.local/bin to PATH and rerun."
+        log "Downloading a small CPU validation model."
+        hf download Qwen/Qwen2.5-1.5B-Instruct-GGUF \
+            qwen2.5-1.5b-instruct-q4_k_m.gguf \
+            --local-dir "$MODEL_DIR/Qwen2.5-1.5B-Instruct-GGUF"
+        log "Downloading the Qwen3.6 27B Q4_K_M production model (about 20 GB)."
+        hf download ggml-org/Qwen3.6-27B-GGUF \
+            Qwen3.6-27B-Q4_K_M.gguf \
+            --local-dir "$PRODUCTION_MODEL_DIR"
+    fi
     log "llama.cpp pinned at $LLAMA_PIN; models stored under $MODEL_DIR."
 }
 
